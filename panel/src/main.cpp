@@ -22,6 +22,7 @@
 #include "target.h"
 #include "theme.h"
 #include "ui_state.h"
+#include "update_config.h"
 #include "vr_overlay.h"
 
 #include <fcntl.h>
@@ -1123,19 +1124,11 @@ Language configLanguage(const ConfigFile& config) {
  * @return the settings
  */
 frame_updater::UpdaterConfig updaterConfig() {
-    frame_updater::UpdaterConfig c;
     const char* data = std::getenv("XDG_DATA_HOME");
     const char* home = std::getenv("HOME");
     const std::string dataHome =
         data != nullptr && data[0] == '/' ? std::string(data) : std::string(home != nullptr ? home : "") + "/.local/share";
-    c.script = dataHome + "/frameeyeosc/frame-update.sh";
-    c.app = "frameeyeosc";
-    c.repo = "sasaken1102r/frameeyeosc";
-    c.currentVersion = FRAMEEYEOSC_VERSION;
-    c.assetPattern = "frameeyeosc-{version}-steamframe-aarch64.tar.gz";
-    // The update button is only in the panel, so whoever uses it has the panel installed
-    c.defaultInstallArgs = {"--with-panel"};
-    return c;
+    return fos::updaterConfig(dataHome + "/frameeyeosc/frame-update.sh", FRAMEEYEOSC_VERSION);
 }
 
 /**
@@ -1149,7 +1142,7 @@ frame_updater::UpdateStatus fakeUpdate(const std::string& state, const std::stri
     frame_updater::UpdateStatus u;
     u.current = FRAMEEYEOSC_VERSION;
     u.latest = u.current;
-    u.url = "https://github.com/sasaken1102r/frameeyeosc/releases/latest";
+    u.url = fos::kReleasePage;
     u.checkedAt = static_cast<long long>(std::time(nullptr)) - 600;
     if (state == "checking") {
         u.checking = true;
@@ -3608,8 +3601,11 @@ int runOverlay(const Options& options) {
                         // ...and "Open in Konsole" on its confirmation: the installer, as typed by hand
                         if (hit.action == PanelAction::AppsLaunch) {
                             const std::string key = panel.appsConfirmKey();
-                            const frame_apps::LaunchResult result = apps.openInstaller(
-                                key, model.language == Language::Ja ? frame_apps::Lang::Ja : frame_apps::Lang::En);
+                            const frame_apps::LaunchResult result =
+                                fos::canInstallCompanion(key)
+                                    ? apps.openInstaller(key, model.language == Language::Ja ? frame_apps::Lang::Ja
+                                                                                           : frame_apps::Lang::En)
+                                    : frame_apps::LaunchResult::UnknownApp;
                             panel.setAppsLaunchResult(result);
                             std::fprintf(stderr, "[apps] Konsole with the installer (%s): %s\n",
                                          key.empty() ? "menu" : key.c_str(),
@@ -3974,7 +3970,7 @@ int runOverlay(const Options& options) {
             }
             // A refused "preview on" shows why for a while, then the switch can ask again
             if (eye_preview::refusalOver(model.preview, now)) dirty = true;
-            const eye_preview::CameraState camera = eye_preview::cameraState(
+            const eye_preview::CameraState camera = eye_preview::cameraPicturesState(
                 model.eyecam, SettingsView(model).flag(key::kCameraLids), model.preview.refused);
             // The eye cameras can't give pictures (now): the switch goes off, and only pressing it again brings them
             // back (not eyecam-rec coming back by itself)

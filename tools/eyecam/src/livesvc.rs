@@ -610,11 +610,7 @@ impl Worker {
     /// eye whose value is further from its own last 10 s holds its last accepted value (with lower confidence) until
     /// they agree again. Only fresh values count (the engine holds the pupil while it is not seen whole).
     fn check_pupils(&mut self, eye: usize, t: f64, o: &mut live::Out) {
-        if !(o.f.ok_pupil && o.pupil_mm.is_finite() && !o.closed) {
-            return;
-        }
-        if self.pupils[eye].latest.is_some_and(|(_, m)| m == o.pupil_mm) {
-            // Held by the engine (pupil not seen whole): nothing new to compare.
+        if !(o.pupil_fresh && o.pupil_mm.is_finite()) {
             return;
         }
         self.pupils[eye].latest = Some((t, o.pupil_mm));
@@ -639,6 +635,8 @@ impl Worker {
         };
         if conflict {
             self.pupil_conflicts += 1;
+            // Range calibration must not collect a measurement the live binocular check just refused.
+            o.pupil_fresh = false;
             if let Some((ratio, mm, dil)) = self.pupils[eye].held {
                 (o.pupil_ratio, o.pupil_mm, o.pupil_dilation) = (ratio, mm, dil);
             }
@@ -959,6 +957,108 @@ pub fn spawn(
 mod tests {
     use super::*;
     use crate::replay::Session;
+
+    #[test]
+    fn a_stationary_conflicting_pupil_stays_rejected_until_the_eyes_agree() {
+        let dir = std::env::temp_dir().join(format!(
+            "eyecam-worker-pupil-conflict-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut worker = Worker {
+            writer: LiveWriter::create(&dir.join("live")).unwrap(),
+            shared: Arc::new(Shared::default()),
+            calib_path: dir.join("calib.json"),
+            calib: CalibFile::default(),
+            engines: [EyeEngine::default(), EyeEngine::default()],
+            params: [Params::default(); 2],
+            sensitivity: f64::NAN,
+            live: true,
+            buffers: false,
+            last_t: [f64::NEG_INFINITY; 2],
+            last_seen: [None; 2],
+            frames: [0; 2],
+            collect: None,
+            steps: Vec::new(),
+            samples: [Vec::new(), Vec::new()],
+            flipped: vec![0; W * H],
+            pupils: [PupilTrack::default(), PupilTrack::default()],
+            pupil_seen: [PupilSeen::default(), PupilSeen::default()],
+            pupil_offset: PupilOffset::default(),
+            pupil_conflicts: 0,
+            pupil_pairs: 0,
+            mono_minus_raw: 0,
+            offset_at: Instant::now(),
+            busy: Duration::ZERO,
+            busy_n: 0,
+            busy_since: Instant::now(),
+            log_n: 0,
+            log_us: 0,
+            log_since: Instant::now(),
+            preview: Preview::new(dir.join(preview::FILE_NAME)),
+        };
+        let measured = |mm: f64| {
+            let ratio = mm / live::R_MM;
+            live::Out {
+                f: crate::feat::Features {
+                    ok_pupil: true,
+                    pupil_a: ratio * 55.0 / 2.0,
+                    ..crate::feat::Features::default()
+                },
+                pupil_ratio: ratio,
+                pupil_mm: mm,
+                pupil_dilation: 0.5,
+                pupil_fresh: true,
+                confidence: 1.0,
+                r: 55.0,
+                ..live::Out::default()
+            }
+        };
+        // Establish each eye's accepted history and the normal left/right offset.
+        for k in 0..90 {
+            let t = k as f64 / 90.0;
+            let mm = 4.0 + (k % 2) as f64 * 0.01;
+            for eye in 0..2 {
+                let mut out = measured(mm);
+                worker.check_pupils(eye, t, &mut out);
+                assert!(out.pupil_fresh);
+            }
+        }
+        let accepted = worker.pupils[0].held.unwrap();
+        // The same bad raw diameter arrives repeatedly. Equality with the last raw value is not evidence that
+        // it was accepted: every frame must still hold the good value and stay out of pupil range calibration.
+        for k in 0..40 {
+            let t = 1.0 + k as f64 / 90.0;
+            let mut right = measured(4.0);
+            worker.check_pupils(1, t, &mut right);
+            let mut left = measured(8.0);
+            worker.check_pupils(0, t, &mut left);
+            assert!(
+                !left.pupil_fresh,
+                "bad measurement became fresh at frame {k}"
+            );
+            assert_eq!(
+                (left.pupil_ratio, left.pupil_mm, left.pupil_dilation),
+                accepted
+            );
+            assert_eq!(left.confidence, 0.5);
+            assert!(Sample::from_out(Label::Bright, &left, t).pd.is_nan());
+        }
+        assert_eq!(worker.pupil_conflicts, 40);
+        // Once the pupil returns to its normal size it is accepted and collected again.
+        let t = 1.5;
+        worker.check_pupils(1, t, &mut measured(4.0));
+        let mut recovered = measured(4.0);
+        worker.check_pupils(0, t, &mut recovered);
+        assert!(recovered.pupil_fresh && recovered.pupil_mm == 4.0);
+        assert!(
+            Sample::from_out(Label::Bright, &recovered, t)
+                .pd
+                .is_finite()
+        );
+        drop(worker);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn pupil_share_covers_the_last_two_seconds() {

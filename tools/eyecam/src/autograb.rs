@@ -252,10 +252,17 @@ mod tests {
         std::fs::write(&mine, b"x").unwrap();
         assert!(matches!(check(&mine), State::Unsafe(why) if why.contains("not owned by root")));
         std::fs::remove_file(&mine).unwrap();
-        // A root-owned binary in a root-owned directory without capabilities.
+        // System files can be mapped to an unprivileged owner in a cloud container. They must still be
+        // refused there; only a root-owned binary in a root-owned directory reaches the capability check.
         let ls = Path::new("/usr/bin/ls");
         if ls.exists() {
-            assert_eq!(check(ls), State::NoCap(ls.to_path_buf()));
+            let trusted_ownership = root_only(ls).is_ok() && root_only(ls.parent().unwrap()).is_ok();
+            let state = check(ls);
+            if trusted_ownership {
+                assert_eq!(state, State::NoCap(ls.to_path_buf()));
+            } else {
+                assert!(matches!(state, State::Unsafe(_)), "{state:?}");
+            }
         }
         // A root-owned file in a directory others can write to (/tmp is 1777).
         let tmp_root = Path::new("/tmp/.X11-unix");

@@ -1,5 +1,6 @@
 /target/
 /dist/
+__pycache__/
 # Eye-tracking recordings are personal data; never commit them.
 /tools/*
 # ...except the vendored eye-camera tool (see Development in README.md)

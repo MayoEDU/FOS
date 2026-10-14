@@ -305,6 +305,15 @@ void testCameraState() {
     view.status.hasSetupDone = true;
     view.status.setupDone = false;
     CHECK(cameraState(view, true, false) == CameraState::NotSetUp);
+    // Pictures must help position the headset before the first calibration succeeds. Interpreted camera values
+    // remain unavailable until that calibration is complete.
+    view.status.hasPreview = true;
+    CHECK(cameraPicturesState(view, true, false) == CameraState::Available);
+    CHECK(!cameraValuesAvailable(cameraState(view, true, false)));
+    CHECK(cameraPicturesState(view, false, false) == CameraState::NotInUse);
+    CHECK(cameraPicturesState(view, true, true) == CameraState::Refused);
+    view.status.hasPreview = false;
+    CHECK(cameraPicturesState(view, true, false) == CameraState::Old);
     view.status.setupDone = true;
     CHECK(cameraState(view, false, false) == CameraState::NotInUse);
     CHECK(cameraState(view, true, false) == CameraState::Old);
@@ -315,6 +324,8 @@ void testCameraState() {
     CHECK(cameraValuesAvailable(CameraState::Available) && cameraValuesAvailable(CameraState::Old));
     CHECK(cameraValuesAvailable(CameraState::Refused) && !cameraValuesAvailable(CameraState::NotInUse));
     CHECK(!cameraValuesAvailable(CameraState::NotRunning) && !cameraValuesAvailable(CameraState::NotSetUp));
+    view.visible = false;
+    CHECK(cameraPicturesState(view, true, false) == CameraState::NotRunning);
 }
 
 void testAsker() {

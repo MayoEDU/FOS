@@ -1,4 +1,6 @@
-# frameeyeosc
+# FOS / frameeyeosc for Steam Frame
+
+このリポジトリは Steam Frame 向けの FOS フォークです。[MayoEDU/FOS のリリース](https://github.com/MayoEDU/FOS/releases)からインストールし、元の版から切り替えるときは `./install.sh --with-panel` でパネルも置き換えてください。更新先は **MayoEDU/FOS** です。元の `frame.sasaken1102s.net` インストーラーで eye を選ぶと元の版に戻ります。FOS のビルド、インストール、上流との統合は [docs/FORK.md](docs/FORK.md) を参照してください。
 
 Steam Frame のアイトラッキング（視線とまぶたの開き具合）を、VRCFaceTracking 形式のアバターパラメータとして OSC で VRChat に送るツールです。ヘッドセット上でバックグラウンドのサービスとして動き、Steam Link でストリーミングしている PC 版 VRChat で使えます。PC の VRCFaceTracking に送って、ほかのトラッカーとまとめることもできます。
 
@@ -50,37 +52,29 @@ SteamVR の Steam Link は、自分でもアイトラッキングを OSC で送�
 
 ## インストール
 
-### いちばんかんたん：Frame の中だけで入れる（おすすめ）
+### FOS を Frame に入れる
 
-PC は要りません。Frame の Konsole（画面下のバーの ＋ →「プログラムを起動」→ Konsole）で次のコマンドを入力して Enter を押し、メニューで **1**（frameeyeosc）を選びます。ダッシュボードのパネルも入れるかは、途中で聞かれます。
+[MayoEDU/FOS のリリース](https://github.com/MayoEDU/FOS/releases)から Steam Frame 用の tar.gz と `SHA256SUMS` をダウンロードしてください。開発者モードを有効にして Konsole を開き、`sha256sum -c SHA256SUMS` で確認し、展開して通常ユーザーで `./install.sh --with-panel` を実行します。元の版から切り替えるときは、更新先を FOS に変えるためパネルも置き換える必要があります。[FOS のガイド](docs/FORK.md)にバックアップとビルドの手順があります。
 
-```sh
-curl -fsSL https://frame.sasaken1102s.net | sh
-```
-
-- 最初の 1 回だけ、Steam 設定 → システム →「開発者モードを有効化」をオンにしておきます（オフだと ＋ の一覧に Konsole が出ません）
-- ほかのアプリ（frame-jp-keyboard・frame-mic-tuner・frame-perf-overlay）も同じメニューから一緒に入れられます
-- 更新は、同じコマンドで同じ番号を選ぶだけ。アンインストールはメニューの `u` から
-- くわしい手順と動画：https://frame.sasaken1102s.net
-- 質問なしで入れるなら `curl -fsSL https://frame.sasaken1102s.net | sh -s -- install eye`
-
-入るもの・オプションは、下の「PC から入れる」と同じです（中で `install.sh` を実行しています）。インストールしたら、下の Steam Link の OSC 送信を OFF にするのも忘れずに。
+元の `frame.sasaken1102s.net` インストーラーで eye を選ぶと元の版に戻ります。FOS の更新は FOS のリリースか FOS のパネルを使ってください。
 
 ### PC から入れる
 
-リリースページから tar.gz をダウンロードして、ヘッドセットにコピーします。PC からなら例えば:
+[FOS のリリース](https://github.com/MayoEDU/FOS/releases)から tar.gz と `SHA256SUMS` をダウンロードして、ヘッドセットにコピーします。PC からなら例えば:
 
 ```sh
 scp frameeyeosc-*-steamframe-aarch64.tar.gz steamos@<ヘッドセットのIP>:
+scp SHA256SUMS steamos@<ヘッドセットのIP>:
 ```
 
 そのあとヘッドセット上で（`ssh steamos@<ヘッドセットのIP>`）:
 
 ```sh
+sha256sum -c SHA256SUMS
 tar xzf frameeyeosc-*-steamframe-aarch64.tar.gz
 cd frameeyeosc
 ./install.sh               # frameeyeosc だけ
-./install.sh --with-panel  # frameeyeosc とダッシュボードのパネル
+./install.sh --with-panel  # 元の版から FOS に切り替えるときはパネルも置き換える
 ```
 
 sudo は要りません。全部ホームフォルダ（`~/.local/bin`、`~/.local/lib/eyecam`、`~/.config`、`~/.local/share`）に入るので、SteamOS を更新しても消えません。更新するときも同じコマンドです。`--with-panel` を付けないときは、入っているパネルはそのまま残ります。
@@ -95,7 +89,7 @@ sudo は要りません。全部ホームフォルダ（`~/.local/bin`、`~/.loc
 
 `env` の `FRAMEEYEOSC_ARGS` に書いたオプションは、今までどおり効きます。ただし、そこに書いた項目はパネルでは「コマンドで固定中」になって変えられません。パネルで変えたい項目は `env` から消して、`systemctl --user restart frameeyeosc` してください（値はパネルで設定し直します）。
 
-削除は `./install.sh --uninstall`（パネルも消えます。設定と学習値も消すなら `--purge` を付ける）。
+展開したフォルダーを消したあとも、`~/.local/share/frameeyeosc/install.sh --uninstall` で削除できます（パネルと同梱のカメラツールも消えます。このアプリの設定と学習値も消すなら `--purge` を付けます）。個人の録画は残します。[専用の削除手順](docs/FORK.md#remove-only-frameeyeosc-and-its-bundled-tools)を参照してください。
 
 #### パネルから更新する（0.4.0 から）
 
@@ -367,7 +361,7 @@ eyecam-rec は、受け取ったバッファも Valve の目のデータも読�
 
 - カメラを使うのをやめるには、「基本」タブの「目のカメラ」を「使わない」にします（`"camera_lids": false`）。Valve の値だけを送るようになり、frameeyeosc が eyecam-rec にも映像から目の値を出すのをやめさせます（`live off`。eyecam-rec が再起動するたびに言い直します）。そのあいだ、校正のボタンは押せません。eyecam-rec 自体は動き続け、カメラのバッファを持ったまま、状態ファイルを書きます
 - eyecam を完全に止めるには: `systemctl --user disable --now eyecam`。更新してもオフのままです（`install.sh` が eyecam.service を有効にするのは初めて入れたときだけで、そのあとは動いていれば再起動するだけです）。また使うときは `systemctl --user enable --now eyecam`
-- 権限の付いたコピーを取り除くには: `sudo ~/.local/lib/eyecam/install_grab.sh --uninstall`。`./install.sh --uninstall` は `~/.local/lib/eyecam` を消すので、その前にやってください（あとからでも、コピーが残っていれば、消すための `sudo rm` のコマンドを出します）
+- 権限の付いたコピーを取り除くには: `sudo ~/.local/share/frameeyeosc/install_grab.sh --uninstall`。`~/.local/share/frameeyeosc/install.sh --uninstall` の前にやってください。ヘルパーが残っていれば、通常の削除スクリプトは専用ヘルパーのスクリプトを一時保存し、明示的な sudo コマンドを表示します。sudo を自動実行することはありません。
 - `./install.sh --uninstall` は frameeyeosc と一緒に eyecam も取り除き、`--purge` を付けると設定と校正（`~/.config/eyecam`）も消します。`~/eyecam` の校正のファイルと開発用の録画（[プライバシー](#プライバシー)）は残すので、要らなければ自分で消してください
 
 ## うまく動かないとき
@@ -441,7 +435,7 @@ eyecam-rec は、受け取ったバッファも Valve の目のデータも読�
 
 ## 免責事項
 
-- 自己責任でお使いください。このフォークでの変更は AI（Claude Opus 5.5）を使って作りました。ユニットテストと自分の Steam Frame で動作は確かめていますが、あなたの環境で何か起きても責任は取れません。使う前にコードを自分の目で確認してください。本ソフトウェアは無保証です（[LICENSE](LICENSE) を参照）
+- FOS の変更は開発用マシンのテストで確認しています。リリースするには、実際の Steam Frame での確認が必要です。元のプロジェクトの実機テスト結果は、元の版に対するものです。本ソフトウェアは無保証です（[LICENSE](LICENSE) を参照）
 - ヘッドセットのアイトラッキングが使っている、公開されていない共有メモリの形式（バージョン4と、SteamOS 0.4.3 からのバージョン5）を読んでいます。SteamOS の更新でこの形式が変わると、frameeyeosc が対応するまで目のデータを送れません。そのあいだも frameeyeosc は動き続けて 1 秒ごとに読み直し、パネルには「目のデータを読めません: unsupported eye shared-memory version …」と出ます
 - frameeyeosc は root 権限を使わず、SteamOS のファイルや設定は変更しません。書き込むのは、アイトラッキングの共有メモリにある「次のサンプルをください」という合図だけです。共有メモリのロックも、アイトラッキングの本来の利用側と同じ手順で取ります。パネルが書くのは frameeyeosc の設定ファイルだけで、ほかには eyecam-rec に命令を送ります。目のカメラの準備では、Konsole を開くのと、SteamOS にパスワードがあるかの確認（`steamos-passwd --has-password`。読むだけ）もします。目のカメラを使うときだけ、sudo の手順が 1 回あり、それは自分で実行します。これで `/home/.eyecam` に、権限を 1 つだけ持つ root のプログラムが 1 つ入ります（[目のカメラ](#目のカメラ)）
 - eyecam は、アイトラッキングが中で使っているバッファから目のカメラの映像を読みます。これも公開されていないものです。SteamOS の更新で読めなくなることがあり、そのときは frameeyeosc は Valve の値を送ります
@@ -461,7 +455,7 @@ scripts/package.sh   # 両方入った dist/frameeyeosc-<version>-steamframe-aar
 
 `vendor/frame-updater/` は、私の Steam Frame 用アプリで共通の更新の仕組みのコピー、`vendor/frame-apps/` は「詳細」›「バージョン」に出す私のほかの Frame アプリの一覧のコピーです。ここでは書き換えないでください。どちらも `MANIFEST.sha256` と違っていると `scripts/package.sh` が止まります。
 
-`tools/eyecam/` は、目のカメラのツール eyecam（`eyecam-rec` と `eyecam-grab`）のコピーです。eyecam は別のブランチで作っているので、これもここでは書き換えないでください。更新するときは、取り込みたいコミットからこのフォルダーを取り出して（`git rm -rq tools/eyecam && git checkout <コミット> -- tools/eyecam`。先の `git rm` で、新しい版でなくなったファイルも消える）、メッセージにそのコミットのハッシュを書いてコミットします。`Cargo.toml` と `Cargo.lock` は別で、ルートの Cargo のビルドには入りません。`scripts/package.sh` が別にビルドしてテストします。
+`tools/eyecam/` には、目のカメラのツール eyecam（`eyecam-rec` と `eyecam-grab`）と FOS の修正が入っています。`Cargo.toml` と `Cargo.lock` は別で、ルートの Cargo のビルドには入りません。`scripts/package.sh` が別にビルドしてテストします。上流の変更を取り込むときは、FOS の修正を残すため、このフォルダーを丸ごと置き換えずにマージして確認してください。[docs/FORK.md](docs/FORK.md)に手順があります。
 
 リリースを公開するときは、2 つとも添付します。`SHA256SUMS` が無いリリースは、パネルの「更新する」では入れず、手で更新してもらう表示になります。リリースの本文は `CHANGELOG.md` のその版の節（見出しを除く）です。節は英語の要約 1 段落で始め、次に `日本語: ` で始まる日本語の要約の段落、そのあとに箇条書きを置きます。古い版のパネル（0.7.1 から）は、その版が出ているあいだ、要約を出します（日本語の画面では日本語の段落。マークダウンを外し、300 文字まで）:
 

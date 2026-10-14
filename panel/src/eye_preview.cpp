@@ -342,6 +342,11 @@ bool pictureFresh(const Picture& picture, uint64_t nowNs) {
 CameraState cameraState(const eyecam::View& view, bool cameraLids, bool refused) {
     if (!view.visible) return CameraState::NotRunning;
     if (!eyecam::setUp(view)) return CameraState::NotSetUp;
+    return cameraPicturesState(view, cameraLids, refused);
+}
+
+CameraState cameraPicturesState(const eyecam::View& view, bool cameraLids, bool refused) {
+    if (!view.visible) return CameraState::NotRunning;
     if (!cameraLids) return CameraState::NotInUse;
     if (!view.status.hasPreview) return CameraState::Old;
     if (refused) return CameraState::Refused;

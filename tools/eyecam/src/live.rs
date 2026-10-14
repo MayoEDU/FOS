@@ -270,10 +270,15 @@ pub struct Out {
     pub pupil_ratio: f64,
     pub pupil_mm: f64,
     pub pupil_dilation: f64,
+    /// A whole, settled pupil was measured on this frame (rather than the held output from an earlier one).
+    pub pupil_fresh: bool,
     pub confidence: f64,
     /// Normalised features (5-frame causal medians) and the R and pitch used.
     pub skin_up: f64,
     pub aperture: f64,
+    /// The same causal lid aperture before normalising by the iris radius. Calibration can retain it while the
+    /// radius is still unknown, then use the radius measured in its later open-eye steps.
+    pub aperture_px: f64,
     pub lower: f64,
     pub box_f: f64,
     pub r: f64,
@@ -684,7 +689,7 @@ impl EyeEngine {
             min_vis: EXT_MIN_VIS,
             min_ba: EXT_MIN_BA,
             a: if known { (EXT_SIZE.0 * self.a_open.value, EXT_SIZE.1 * self.a_open.value) } else { EXT_A_PX },
-            inner_max: if known { self.inner_open.value + EXT_DARKER } else { f64::INFINITY },
+            inner_max: if known { self.inner_open.value + EXT_DARKER * self.ex.contrast_scale() } else { f64::INFINITY },
             near: self
                 .prev_p
                 .filter(|_| !valve_open.is_finite() && t - self.prev_p_t < EXT_TRACK_S)
@@ -797,7 +802,9 @@ impl EyeEngine {
         if let Some(pp) = p
             && (box_bright || unanchored)
             && self.a_open.len() >= 30
-            && (!(0.45..=1.3).contains(&(pp.a / self.a_open.value)) || pp.inner > self.inner_open.value + 15.0 || pp.vis < 0.5)
+            && (!(0.45..=1.3).contains(&(pp.a / self.a_open.value))
+                || pp.inner > self.inner_open.value + 15.0 * self.ex.contrast_scale()
+                || pp.vis < 0.5)
         {
             p = None;
             f.ok_pupil = false;
@@ -977,7 +984,8 @@ impl EyeEngine {
         }
 
         // The pupil keeps its last whole-pupil value while closed, just after reopening, and while partly hidden.
-        if pupil_whole && pd.is_finite() && !hold && !closed {
+        let pupil_fresh = pupil_whole && pd.is_finite() && !hold && !closed;
+        if pupil_fresh {
             self.last_pd = pd;
         }
         let pupil_ratio = self.last_pd;
@@ -999,9 +1007,11 @@ impl EyeEngine {
             pupil_ratio,
             pupil_mm: pupil_ratio * R_MM,
             pupil_dilation,
+            pupil_fresh,
             confidence,
             skin_up: skin,
             aperture: ap,
+            aperture_px: ap_px,
             lower: lo,
             box_f,
             r,
@@ -1027,6 +1037,8 @@ pub struct Sample {
     /// Normalised by `r` (the radius in use for that frame).
     pub skin: f64,
     pub ap: f64,
+    /// Unnormalised aperture retained when an early close step has no iris radius yet.
+    pub ap_px: f64,
     pub pd: f64,
     pub pitch: f64,
     pub lower_px: f64,
@@ -1123,7 +1135,18 @@ impl Sample {
     /// The same sample in units of radius `r`.
     fn rescaled(&self, r: f64) -> Sample {
         let k = self.r / r;
-        Sample { skin: self.skin * k, ap: self.ap * k, pd: self.pd * k, r, ..*self }
+        let ap = if self.ap.is_finite() && self.r.is_finite() && self.r > 0.0 {
+            self.ap * k
+        } else {
+            self.ap_px / r
+        };
+        Sample {
+            skin: self.skin * k,
+            ap,
+            pd: self.pd * k,
+            r,
+            ..*self
+        }
     }
 }
 
@@ -1171,7 +1194,12 @@ impl Sample {
             ok: o.f.ok_pupil,
             skin: o.skin_up,
             ap: o.aperture,
-            pd: if o.f.ok_pupil { 2.0 * o.f.pupil_a / o.r } else { f64::NAN },
+            ap_px: o.aperture_px,
+            pd: if o.pupil_fresh {
+                2.0 * o.f.pupil_a / o.r
+            } else {
+                f64::NAN
+            },
             pitch: o.pitch,
             lower_px: o.f.lower_y,
             r: o.r,
@@ -2301,6 +2329,7 @@ mod tests {
                 ok,
                 skin,
                 ap: ap + (i % 3) as f64 * 0.001,
+                ap_px: f64::NAN,
                 pd: 0.9,
                 pitch: pitch + (i % 5) as f64,
                 lower_px: lower,
@@ -2447,6 +2476,67 @@ mod tests {
             x.ok = i < pupil;
         }
         eye
+    }
+
+    #[test]
+    fn an_early_close_keeps_its_lid_measurement_until_the_iris_radius_is_known() {
+        let mut engine = EyeEngine::default();
+        let params = Params::default();
+        // The pupil is found, but there have not yet been ten iris fits to establish this wear's radius.
+        let first = engine.process(
+            &lid_frame(Some((250.0, 200.0)), true),
+            f64::NAN,
+            0.0,
+            &params,
+        );
+        assert!(first.f.ok_pupil);
+        let close_frame = lid_frame_between(None, 180..215);
+        let mut eye = Vec::new();
+        for k in 1..=18 {
+            let t = k as f64 / 15.0;
+            let out = engine.process(&close_frame, f64::NAN, t, &params);
+            assert!(!out.f.ok_pupil && out.r.is_nan(), "{out:?}");
+            if k > 3 {
+                assert!(
+                    out.aperture.is_nan() && out.aperture_px.is_finite(),
+                    "{out:?}"
+                );
+                eye.push(Sample::from_out(Label::Close, &out, t));
+            }
+        }
+        // The subsequent normal / wide / normal / wide steps establish the final calibration radius.
+        for (label, n, skin, ap) in [
+            (Label::Normal, 63, 0.73, 1.44),
+            (Label::Widen, 33, 0.93, 1.6),
+            (Label::Normal, 18, 0.73, 1.44),
+            (Label::Widen, 33, 0.93, 1.6),
+        ] {
+            for mut sample in samples(label, n, skin, ap, -14.0, 250.0, true) {
+                sample.t = 2.0 + eye.len() as f64 / 15.0;
+                eye.push(sample);
+            }
+        }
+        let (wear, measured) = fit_wear(&[eye.clone(), eye.clone()], [0.19; 2]).unwrap();
+        assert!(measured && wear[0].ap_n - wear[0].ap_cl > MIN_OPEN_GAP);
+        let (report, _) = wear_report(&[eye.clone(), eye.clone()]);
+        let report = json::parse(&report).unwrap();
+        assert_eq!(
+            report
+                .get("L")
+                .unwrap()
+                .get("close_frames_with_lids")
+                .unwrap()
+                .num(),
+            Some(15.0)
+        );
+        // Still fails when the close frames contain no measured lids: a later radius cannot invent evidence.
+        for sample in eye.iter_mut().filter(|s| s.label == Label::Close) {
+            sample.ap_px = f64::NAN;
+        }
+        assert!(matches!(
+            fit_wear_eyes(&[eye.clone(), eye], [0.19; 2]),
+            [Err(WearFail::Close), Err(WearFail::Close)]
+        ));
     }
 
     #[test]
@@ -2727,6 +2817,49 @@ mod tests {
         assert!(o.f.ok_pupil && !o.f.diag.gated);
     }
 
+    #[test]
+    fn a_dark_round_crease_is_not_a_pupil_at_dim_camera_exposures() {
+        let params = Params::default();
+        for gain in [1.0, 0.5, 0.25, 0.15] {
+            let dim = |mut img: Vec<u8>| {
+                for pixel in &mut img {
+                    *pixel = (8.0 + (*pixel as f64 - 12.0) * gain)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                }
+                img
+            };
+            let open = dim(lid_frame(Some((250.0, 200.0)), true));
+            for radius in [12.0, 16.0, 20.0] {
+                let mut shut = lid_frame(None, false);
+                for y in 0..vision::H {
+                    for x in 0..350 {
+                        if (x as f64 - 250.0).hypot(y as f64 - 200.0) < radius {
+                            shut[y * vision::W + x] = 40;
+                        }
+                    }
+                }
+                let shut = dim(shut);
+                let mut engine = EyeEngine::default();
+                for k in 0..100 {
+                    assert!(
+                        engine
+                            .process_open(&open, 0.0, 1.0, k as f64 / FPS, &params)
+                            .f
+                            .ok_pupil
+                    );
+                }
+                for k in 100..145 {
+                    let out = engine.process_open(&shut, 0.0, 0.0, k as f64 / FPS, &params);
+                    assert!(
+                        !out.f.ok_pupil && !out.pupil_fresh,
+                        "gain {gain}, crease radius {radius}: {out:?}"
+                    );
+                }
+            }
+        }
+    }
+
     /// Lid skin (150) with the eye open between rows 130 and 270 (sclera 110), the iris (70) and pupil (12) at `pupil`
     /// (radius 25) if any, and the lens-edge band; `open` false: lid skin all over (a closed eye).
     fn lid_frame(pupil: Option<(f64, f64)>, open: bool) -> Vec<u8> {
@@ -2769,6 +2902,44 @@ mod tests {
             assert!(o.f.ok_pupil && !o.closed, "frame {k}: {:?}", o.f.diag);
         }
         (e, p, t)
+    }
+
+    #[test]
+    fn pupil_range_samples_exclude_the_held_size_during_a_blink_and_reopening() {
+        let (mut engine, params, mut t) = seen_at((250.0, 200.0), Tune::default());
+        let open = lid_frame(Some((250.0, 200.0)), true);
+        let closed = lid_frame(None, false);
+        t += 1.0 / FPS;
+        let out = engine.process(&open, f64::NAN, t, &params);
+        assert!(out.pupil_fresh && Sample::from_out(Label::Bright, &out, t).pd.is_finite());
+        let mut closed_out = out;
+        for _ in 0..45 {
+            t += 1.0 / FPS;
+            closed_out = engine.process(&closed, f64::NAN, t, &params);
+            assert!(!closed_out.pupil_fresh);
+            assert!(Sample::from_out(Label::Bright, &closed_out, t).pd.is_nan());
+        }
+        assert!(
+            closed_out.closed && closed_out.pupil_ratio.is_finite(),
+            "the live output holds its last size"
+        );
+        // A freshly detected pupil while the lid is still opening is not a new diameter observation.
+        for _ in 0..20 {
+            t += 1.0 / FPS;
+            let out = engine.process(&open, f64::NAN, t, &params);
+            assert!(out.f.ok_pupil && !out.pupil_fresh, "{out:?}");
+            assert!(Sample::from_out(Label::Bright, &out, t).pd.is_nan());
+        }
+        for _ in 0..20 {
+            t += 1.0 / FPS;
+            closed_out = engine.process(&open, f64::NAN, t, &params);
+        }
+        assert!(
+            closed_out.pupil_fresh
+                && Sample::from_out(Label::Bright, &closed_out, t)
+                    .pd
+                    .is_finite()
+        );
     }
 
     /// Whether the engine reports closed within 10 frames of `frame`, and the outputs of the last one.

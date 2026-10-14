@@ -1,4 +1,10 @@
-# frameeyeosc
+# FOS / frameeyeosc for Steam Frame
+
+FOS is a standalone Steam Frame project based on [sasaken1102r/frameeyeosc](https://github.com/sasaken1102r/frameeyeosc), with drop-in compatibility for its internal eye cameras. Once a stable headset release is published, use [MayoEDU/FOS releases](https://github.com/MayoEDU/FOS/releases) and `./install.sh --with-panel` to replace the existing sender and dashboard while preserving settings. The FOS panel updates from **MayoEDU/FOS**. See [installation, updates, uninstall and upstream integration](docs/FORK.md).
+
+The current source fixes reproduced guided-calibration and pupil/iris sizing failures. Both eyes now pass the initial calibration in a real Steam Frame recording, and fresh pupil sizes respond to bright/dark content. Host tests and recording replay do not replace live headset validation; no stable release has been published. See [camera changes, hardware checks and recording replay](docs/CAMERA_VALIDATION.md).
+
+The ARM64 test candidate has a [one-command Konsole installer](docs/FORK.md#one-command-test-candidate). It replaces the existing app in place; future newer stable releases use the normal in-app update button. Anonymous installation requires the repository to be public.
 
 Sends the Steam Frame's eye tracking (gaze and eye openness) to VRChat over OSC, as VRCFaceTracking-style avatar parameters. It runs on the headset as a background service and works with PC VRChat streamed through Steam Link. It can also send to VRCFaceTracking on the PC, so the eyes can be combined with other trackers.
 
@@ -50,37 +56,29 @@ The video shows the avatar's eyes in VRChat with the eye cameras in use. See [Ey
 
 ## Install
 
-### Easiest: install right inside the Frame (recommended)
+### Install FOS on the Frame
 
-No PC needed. In Konsole on the Frame (+ on the bar at the bottom → the list of programs → Konsole), type this command, press Enter, and pick **1** (frameeyeosc) from the menu. It asks whether to install the dashboard panel too.
+Download the Steam Frame archive and `SHA256SUMS` from [MayoEDU/FOS releases](https://github.com/MayoEDU/FOS/releases). Enable Developer Mode to open Konsole, verify with `sha256sum -c SHA256SUMS`, unpack the archive, and run `./install.sh --with-panel` as the normal headset user. The panel must be replaced as well to switch updates to FOS. See [the fork guide](docs/FORK.md) for backups, release requirements and upstream integration.
 
-```sh
-curl -fsSL https://frame.sasaken1102s.net | sh
-```
-
-- Do this once first: Steam Settings → System → turn on "Enable Developer Mode" (while it's off, Konsole doesn't show up in the + list).
-- The other apps (frame-jp-keyboard, frame-mic-tuner, frame-perf-overlay) can be installed from the same menu.
-- To update, run the same command and pick the same number again. To uninstall, use `u` in the menu.
-- Step-by-step guide and video: https://frame.sasaken1102s.net
-- To install without any prompts: `curl -fsSL https://frame.sasaken1102s.net | sh -s -- install eye`
-
-What gets installed and the options are the same as in "Install from a PC" below (it runs `install.sh` for you). After installing, don't forget to turn off Steam Link's OSC output as described below.
+The upstream installer at `frame.sasaken1102s.net` installs the original fork. Selecting its eye app replaces FOS; use FOS releases or the FOS panel for this project.
 
 ### Install from a PC
 
-Download the tarball from the releases page and copy it to the headset, for example from your PC:
+Download the tarball and `SHA256SUMS` from [FOS releases](https://github.com/MayoEDU/FOS/releases) and copy them to the headset, for example from your PC:
 
 ```sh
 scp frameeyeosc-*-steamframe-aarch64.tar.gz steamos@<headset-ip>:
+scp SHA256SUMS steamos@<headset-ip>:
 ```
 
 Then on the headset (`ssh steamos@<headset-ip>`):
 
 ```sh
+sha256sum -c SHA256SUMS
 tar xzf frameeyeosc-*-steamframe-aarch64.tar.gz
 cd frameeyeosc
 ./install.sh               # frameeyeosc only
-./install.sh --with-panel  # frameeyeosc and the dashboard panel
+./install.sh --with-panel  # replace both, required when switching from upstream to FOS
 ```
 
 No sudo is needed. Everything goes into your home directory (`~/.local/bin`, `~/.local/lib/eyecam`, `~/.config`, `~/.local/share`), so SteamOS updates don't remove it. Run the same command again to update. Without `--with-panel` an installed panel is left as it is.
@@ -95,7 +93,7 @@ Versions before 0.4.0 have no updater, so update to 0.4.0 once by hand: copy and
 
 Options in `FRAMEEYEOSC_ARGS` in `env` still work as before. But anything set there is locked in the panel ("Locked by command line"). To change it from the panel, remove it from `env`, run `systemctl --user restart frameeyeosc`, and set the value again in the panel.
 
-To remove it: `./install.sh --uninstall` (removes the panel too; add `--purge` to also delete settings and calibration).
+To remove it after deleting the extracted archive, run `~/.local/share/frameeyeosc/install.sh --uninstall` (removes the panel and bundled camera tool too; add `--purge` to also delete only their settings and calibration). Personal recordings are kept. See [the scoped uninstall commands](docs/FORK.md#remove-only-frameeyeosc-and-its-bundled-tools) for the camera helper's separate privileged removal.
 
 #### Updating from the panel (0.4.0 and later)
 
@@ -367,7 +365,7 @@ If it differs, don't type the password (close Konsole) and reinstall frameeyeosc
 
 - To stop using the cameras, set "Eye cameras" on the Basic tab to "Don't use" (`"camera_lids": false`). frameeyeosc then sends Valve's values only, and tells eyecam-rec to stop working out eye values from the video (`live off`; told again whenever eyecam-rec restarts). The calibration buttons are greyed out meanwhile. eyecam-rec itself keeps running: it holds the camera buffers and writes its status file.
 - To stop eyecam completely: `systemctl --user disable --now eyecam`. Updates leave it off: `install.sh` enables eyecam.service only on its first install, and later only restarts it if it is running. `systemctl --user enable --now eyecam` turns it on again.
-- To remove the copy that has the capability: `sudo ~/.local/lib/eyecam/install_grab.sh --uninstall`. Run it before `./install.sh --uninstall`, which removes `~/.local/lib/eyecam` (if the copy is still there, it prints the `sudo rm` commands that remove it).
+- To remove the copy that has the capability: `sudo ~/.local/share/frameeyeosc/install_grab.sh --uninstall`. Run it before `~/.local/share/frameeyeosc/install.sh --uninstall`. If the helper remains, the normal uninstaller retains its dedicated helper script temporarily and prints the explicit sudo command; it never runs sudo itself.
 - `./install.sh --uninstall` removes eyecam together with frameeyeosc, and `--purge` also deletes its settings and calibration (`~/.config/eyecam`). The calibration files and developer recordings in `~/eyecam` (see [Privacy](#privacy)) are left for you to delete.
 
 ## Troubleshooting
@@ -441,7 +439,7 @@ To update again later, use the panel's update button or the usual install comman
 
 ## Disclaimer
 
-- Use at your own risk. The changes in this fork were made with Claude Opus 5.5, an AI model. I've tested them with unit tests and on my own Steam Frame, but I can't take responsibility for what happens on yours, so please read the code and check it yourself before you run it. The software comes with no warranty (see [LICENSE](LICENSE)).
+- FOS changes are validated with development-machine tests. A native release still requires testing on an actual Steam Frame; upstream's hardware test results apply to upstream's revision. The software comes with no warranty (see [LICENSE](LICENSE)).
 - It reads the eye tracker's private, undocumented shared-memory layout (versions 4 and 5; 5 came with SteamOS 0.4.3). A SteamOS update can change that layout. If it does, frameeyeosc can't send eye data until it is updated. It keeps running meanwhile and tries again every second, and the panel shows "Can't read eye data: unsupported eye shared-memory version …".
 - frameeyeosc needs no root and doesn't change any SteamOS files or settings. The only thing it writes is a "send me the next sample" flag in the eye tracker's shared memory, and it takes the lock there the same way the tracker's own clients do. The panel only writes frameeyeosc's settings file and sends commands to eyecam-rec; for the eye cameras' setup it also opens Konsole and checks whether SteamOS has a password (`steamos-passwd --has-password`, which only reads). The optional eye cameras need one sudo step, which you run yourself: it puts one root-owned program with one capability in `/home/.eyecam` (see [Eye cameras](#eye-cameras)).
 - eyecam reads the eye cameras' video from buffers the eye tracker uses internally, which are undocumented too. A SteamOS update can stop that; frameeyeosc then sends Valve's values.
@@ -461,7 +459,7 @@ scripts/package.sh   # builds dist/frameeyeosc-<version>-steamframe-aarch64.tar.
 
 `vendor/frame-updater/` is a copy of the update checker shared by my Steam Frame apps, and `vendor/frame-apps/` of the list of my other Frame apps on Advanced › Version. Don't edit them here: `scripts/package.sh` stops if either differs from what its `MANIFEST.sha256` records.
 
-`tools/eyecam/` is a copy of eyecam, the eye-camera tool (`eyecam-rec` and `eyecam-grab`), which is developed on its own branch. Don't edit it here either; to update it, check out that directory from the commit to take and commit it with the commit's hash in the message: `git rm -rq tools/eyecam && git checkout <commit> -- tools/eyecam` (the `git rm` drops files the new version no longer has). It has its own `Cargo.toml` and `Cargo.lock` and is not part of the root Cargo build; `scripts/package.sh` builds and tests it separately.
+`tools/eyecam/` contains eyecam, the eye-camera tool (`eyecam-rec` and `eyecam-grab`), with FOS calibration and capture fixes. It has its own `Cargo.toml` and `Cargo.lock` and is not part of the root Cargo build; `scripts/package.sh` builds and tests it separately. When integrating upstream, merge and review this directory rather than replacing it wholesale, so FOS fixes are retained. See [docs/FORK.md](docs/FORK.md).
 
 To publish a release, attach both files. The panel's "Update" button refuses releases without `SHA256SUMS` and asks for a manual update instead. The release notes are the version's section of `CHANGELOG.md` (without its heading): it starts with a one-paragraph English summary, then a paragraph starting with `日本語: ` with the Japanese summary, then the list. A panel running an older version (0.7.1 or later) shows the summary while that release is available, the Japanese one on a Japanese panel, without markdown and cut at 300 characters:
 

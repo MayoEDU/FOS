@@ -94,6 +94,13 @@ target_compile_options(gaze-fit-test PRIVATE -Wall -Wextra)
 enable_testing()
 add_test(NAME gaze-fit COMMAND gaze-fit-test)
 
+# The drop-in fork's update repository and install arguments, through the real checker with an offline script.
+add_executable(update-config-test tests/update_config_test.cpp ${FRAME_UPDATER_DIR}/cpp/update_check.cpp)
+target_include_directories(update-config-test PRIVATE src ${FRAME_UPDATER_DIR}/cpp)
+target_compile_options(update-config-test PRIVATE -Wall -Wextra)
+target_link_libraries(update-config-test PRIVATE Threads::Threads)
+add_test(NAME update-config COMMAND update-config-test)
+
 # The debug gaze dots' packet, geometry and socket, tested without OpenVR: panel/build/gaze-dots-test
 add_executable(gaze-dots-test tests/gaze_dots_test.cpp src/gaze_dots.cpp src/gaze_fit.cpp src/status.cpp src/json.cpp)
 target_include_directories(gaze-dots-test PRIVATE src)

@@ -928,6 +928,17 @@ impl Pump {
     }
 }
 
+/// Reject calibration prerequisites before accepting a command and starting its timed cues.
+fn calibration_error(kind: CalibKind, live_on: bool, wear_calibrated: bool) -> Option<&'static str> {
+    if !live_on {
+        Some("カメラの処理がオフ。カメラの値を使うをオンにしてから校正してね")
+    } else if kind == CalibKind::User && !wear_calibrated {
+        Some("先に calib wear をしてね")
+    } else {
+        None
+    }
+}
+
 /// Wait for `start` / `calib` while holding the buffers, keeping the ring locked and feeding the live engine while
 /// live processing is on. None on shutdown, or why the buffers had to be given up.
 fn idle(b: &mut Buffers, args: &Args, prox: &mut Proximity, d: &Daemon, live: &mut Live) -> Option<Abort> {
@@ -975,11 +986,11 @@ fn idle(b: &mut Buffers, args: &Args, prox: &mut Proximity, d: &Daemon, live: &m
                         continue;
                     }
                 },
-                Command::Calib(CalibKind::User) if !live.wear_calibrated() => {
-                    answer(req, "err 先に calib wear をしてね");
-                    continue;
-                }
                 Command::Calib(kind) => {
+                    if let Some(error) = calibration_error(*kind, live.on, live.wear_calibrated()) {
+                        answer(req, &format!("err {error}"));
+                        continue;
+                    }
                     let collect = if *kind == CalibKind::Wear { CollectKind::Wear } else { CollectKind::User };
                     let name = if *kind == CalibKind::Wear { "calib wear" } else { "calib user" };
                     (Mode::Calib(collect), name.to_string(), calib_steps(*kind))
@@ -1227,13 +1238,13 @@ fn fake(args: &Args, d: &Daemon) {
                     Ok(steps) => (Phase::Searching(now, steps, name, None), "ok".into()),
                     Err(e) => (Phase::Idle(message), format!("err {e}")),
                 },
-                (Phase::Idle(message), Command::Calib(CalibKind::User)) if calib_state & 1 == 0 => {
-                    (Phase::Idle(message), "err 先に calib wear をしてね".into())
-                }
-                (Phase::Idle(_), Command::Calib(kind)) => {
-                    let name = if kind == CalibKind::Wear { "calib wear" } else { "calib user" };
-                    (Phase::Searching(now, calib_steps(kind), name.into(), Some(kind)), "ok".into())
-                }
+                (Phase::Idle(message), Command::Calib(kind)) => match calibration_error(kind, live_on, calib_state & 1 != 0) {
+                    Some(error) => (Phase::Idle(message), format!("err {error}")),
+                    None => {
+                        let name = if kind == CalibKind::Wear { "calib wear" } else { "calib user" };
+                        (Phase::Searching(now, calib_steps(kind), name.into(), Some(kind)), "ok".into())
+                    }
+                },
                 (Phase::Idle(message), _) => (Phase::Idle(message), "err 録画していない".into()),
                 (Phase::Searching(_, _, _, calib), Command::Stop) => {
                     let msg = if calib.is_some() { "（fake）校正を中止した" } else { "（fake）中止した" };
@@ -2707,6 +2718,19 @@ mod tests {
     use super::*;
     use eyecam::ring::{EXPECTED_PITCH, Framing};
     use std::os::unix::fs::FileExt;
+
+    #[test]
+    fn calibration_requires_live_frames_and_user_requires_wear() {
+        for kind in [CalibKind::Wear, CalibKind::User] {
+            for saved in [false, true] {
+                let error = calibration_error(kind, false, saved).unwrap();
+                assert!(error.contains("オフ"), "disabled processing cannot collect calibration samples");
+            }
+        }
+        assert!(calibration_error(CalibKind::Wear, true, false).is_none());
+        assert!(calibration_error(CalibKind::User, true, true).is_none());
+        assert_eq!(calibration_error(CalibKind::User, true, false), Some("先に calib wear をしてね"));
+    }
 
     /// Frames handed over the way the polling loops do it (slot header + 512-byte rows through `Live::frame`) reach
     /// the engine, and status.json reports `live_ms`:
