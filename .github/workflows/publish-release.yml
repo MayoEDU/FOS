@@ -1,0 +1,35 @@
+name: Publish verified FOS test release
+
+on:
+  workflow_dispatch:
+    inputs:
+      asset_branch:
+        description: Branch containing the verified candidate files and metadata
+        required: true
+        default: release-assets/v0.8.0-rc.1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fos-release-publishing
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.asset_branch }}
+          path: release-assets
+          persist-credentials: false
+      - name: Verify candidate files before publishing
+        run: python3 scripts/publish-release.py release-assets --verify-only
+      - name: Upload and publish the verified prerelease
+        env:
+          FOS_PUBLISH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-release.py release-assets
