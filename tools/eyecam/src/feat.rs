@@ -928,14 +928,14 @@ impl Extractor {
         let nx = xb - xa;
         let mut out = [None, None];
         let no_pupil = !mask_pupil && !self.search.legacy;
-        let mut crease_upper: Option<Lid> = None;
+        let mut crease_upper: Option<(Lid, f64)> = None;
         for (which, slot) in out.iter_mut().enumerate() {
             let (ya, yb) = if which == 0 {
                 (
                     pint((cy - 2.1 * r).max(4.0)),
                     pint((cy + if no_pupil { 1.1 } else { 0.45 } * r).min(396.0)),
                 )
-            } else if let Some(u) = crease_upper {
+            } else if let Some((u, extent)) = crease_upper {
                 // A closed crease can cross above the last pupil's lower search band. Follow the measured upper
                 // edge instead: the opposite gradient must be a real edge below it, not a fixed closed aperture.
                 let lo = xs
@@ -944,7 +944,7 @@ impl Extractor {
                     .fold(f64::INFINITY, f64::min);
                 let hi = xs
                     .iter()
-                    .map(|&x| u.coef.at(x) + 0.8 * r)
+                    .map(|&x| u.coef.at(x) + extent * r)
                     .fold(f64::NEG_INFINITY, f64::max);
                 (pint(lo.max(top as f64)), pint(hi.min(bottom as f64)))
             } else {
@@ -966,9 +966,9 @@ impl Extractor {
                     let g = self.gy[y * W + x] as i32;
                     let v = if which == 0 { -g } else { g }.clamp(0, 255) as u8;
                     let near_upper = which == 0
-                        || crease_upper.is_none_or(|u| {
+                        || crease_upper.is_none_or(|(u, extent)| {
                             let upper_y = u.coef.at(x as f64);
-                            (upper_y + 3.0..=upper_y + 0.8 * r).contains(&(y as f64))
+                            (upper_y + 3.0..=upper_y + extent * r).contains(&(y as f64))
                         });
                     // A last-seen pupil provides geometry when closed; it is not a dark object in this frame.
                     // Masking that old ellipse would erase the closing crease crossing its former position.
@@ -991,8 +991,8 @@ impl Extractor {
             let frac = w.iter().filter(|&&k| k).count() as f64 / w.len() as f64;
             let grad = if sw.is_empty() { 0.0 } else { vision::median(&mut sw) };
             let lid = Lid { coef, y_at: coef.at(cx), frac, grad };
-            if which == 1 && crease_upper.is_some_and(|u| {
-                grad < 2.0 || !(u.y_at + 3.0..=u.y_at + 0.8 * r).contains(&lid.y_at)
+            if which == 1 && crease_upper.is_some_and(|(u, extent)| {
+                grad < 2.0 || !(u.y_at + 3.0..=u.y_at + extent * r).contains(&lid.y_at)
             }) {
                 continue;
             }
@@ -1000,9 +1000,18 @@ impl Extractor {
             if which == 0
                 && no_pupil
                 && grad >= 2.0
-                && (cy - 0.5 * r..=cy + 1.1 * r).contains(&lid.y_at)
+                && lid.y_at <= cy + 1.1 * r
+                && (lid.y_at >= cy - 0.5 * r || (xa as f64..xb as f64).contains(&cx))
             {
-                crease_upper = Some(lid);
+                // The last pupil can be well below a later squint's edge. Start below the measured upper line,
+                // retaining the original lower band's bottom when it is too far above that centre to identify a
+                // closed crease. A wide opening still needs its actual opposing edge, wherever it is in that band.
+                let extent = if lid.y_at >= cy - 0.5 * r {
+                    0.8
+                } else {
+                    (cy + 1.9 * r - lid.y_at) / r
+                };
+                crease_upper = Some((lid, extent));
             }
         }
         let [upper, lower] = out;
@@ -1428,7 +1437,7 @@ mod tests {
     #[test]
     fn closed_lid_edges_follow_a_measured_crease_above_or_below_the_last_pupil_center() {
         let open = synthetic_eye(250.0, 200.0, 25.0);
-        for top in [175, 190, 216] {
+        for top in [90, 120, 150, 175, 190, 216] {
             let mut closed = vec![150u8; W * H];
             for y in top..top + 8 {
                 for x in 190..330 {
@@ -1437,6 +1446,10 @@ mod tests {
             }
             for y in 0..H {
                 closed[y * W + 350..(y + 1) * W].fill(4);
+            }
+            // A skin highlight below the old pupil must not be mistaken for the lower edge of the crease.
+            for y in 245..H {
+                closed[y * W + 190..y * W + 330].fill(180);
             }
             let mut ex = Extractor {
                 search: Search::live(X_MIN),
@@ -1462,6 +1475,45 @@ mod tests {
             );
             assert!(f.lower_y - f.upper_y < 12.0, "top {top}: {f:?}");
         }
+    }
+
+    #[test]
+    fn a_missing_pupil_does_not_force_the_measured_lids_into_a_closed_aperture() {
+        let open = synthetic_eye(250.0, 200.0, 25.0);
+        let mut ex = Extractor { search: Search::live(X_MIN), ..Extractor::default() };
+        let (_, pupil) = ex.extract(&open, 347.0, None, None, None);
+        let pupil = pupil.unwrap();
+        // The iris remains visible when the pupil itself has no contrast. Its large blob is rejected, but the
+        // opposing lid edges still enclose almost two iris radii; a search following the upper lid must retain it.
+        let untracked = synthetic_eye(250.0, 200.0, 0.0);
+        let (f, found) = ex.extract(
+            &untracked,
+            347.0,
+            Some((pupil.cx, pupil.cy)),
+            Some(55.0),
+            Some(&pupil),
+        );
+        assert!(found.is_none() && !f.ok_pupil, "{f:?}");
+        assert!((f.upper_skin_y - 155.0).abs() < 3.0, "{f:?}");
+        assert!((f.lower_y - 255.0).abs() < 3.0, "{f:?}");
+        assert!(f.lower_y - f.upper_y > 85.0, "{f:?}");
+        // An upper edge alone does not supply an aperture: there is no opposite gradient in this frame.
+        let mut unpaired = vec![150u8; W * H];
+        for y in 120..H {
+            unpaired[y * W..(y + 1) * W].fill(40);
+        }
+        for y in 0..H {
+            unpaired[y * W + 350..(y + 1) * W].fill(4);
+        }
+        let (f, found) = ex.extract(
+            &unpaired,
+            347.0,
+            Some((pupil.cx, pupil.cy)),
+            Some(55.0),
+            Some(&pupil),
+        );
+        assert!(found.is_none() && !f.ok_pupil, "{f:?}");
+        assert!((f.upper_skin_y - 120.0).abs() < 3.0 && f.lower_y.is_nan(), "{f:?}");
     }
 
     /// Temporal shading: everything left of x = 186 as dark as a pupil, with a 40 x 70 bulge into the search window.

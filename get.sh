@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Download the explicitly selected FOS Steam Frame release, verify it, and install/replace in place.
-# This bootstrap currently selects the 0.8.0-rc.1 test candidate. The in-app updater selects stable releases only.
+# This bootstrap currently selects the 0.8.1-rc.1 test candidate. The in-app updater selects stable releases only.
 # No GitHub account or sudo is needed once the repository and release are publicly downloadable.
 set -euo pipefail
 
-tag=v0.8.0-rc.1
+tag=v0.8.1-rc.1
 usage() {
     echo "Usage: bash get.sh [--tag vMAJOR.MINOR.PATCH[-candidate]]"
 }
@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
-    echo "Choose an explicit FOS release tag such as v0.8.0-rc.1." >&2
+    echo "Choose an explicit FOS release tag such as v0.8.1-rc.1." >&2
     exit 2
 fi
 if [[ "$(uname -s)" != Linux || "$(uname -m)" != aarch64 ]]; then
@@ -31,7 +31,7 @@ if ! getconf GNU_LIBC_VERSION >/dev/null 2>&1; then
     echo "Steam Frame's native glibc is required. No installed files were changed." >&2
     exit 1
 fi
-for command in curl python3 sha256sum; do
+for command in curl python3 sha256sum mktemp rm; do
     command -v "$command" >/dev/null || { echo "Required command is missing: $command" >&2; exit 1; }
 done
 
@@ -39,20 +39,30 @@ version="${tag#v}"
 version="${version%%-*}"
 asset="frameeyeosc-$version-steamframe-aarch64.tar.gz"
 base="https://github.com/MayoEDU/FOS/releases/download/$tag"
-download="$(mktemp -d "${TMPDIR:-/tmp}/fos-download.XXXXXX")"
+if ! download="$(mktemp -d "${TMPDIR:-/tmp}/fos-download.XXXXXX")"; then
+    echo "Could not create a private download directory. Check TMPDIR, its permissions and free space, then retry. The installed app was left alone." >&2
+    exit 1
+fi
 cleanup() { rm -rf -- "$download"; }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fetch() {
-    curl --fail --show-error --silent --location --max-redirs 5 --connect-timeout 15 \
+    curl --fail --show-error --progress-bar --location --max-redirs 5 --connect-timeout 15 \
+        --retry 2 --retry-delay 1 --retry-max-time 120 \
         --max-time 600 --max-filesize 268435456 --proto '=https' --proto-redir '=https' \
         --output "$2" "$1"
 }
 
-echo "Downloading FOS $tag for Steam Frame."
-if ! fetch "$base/SHA256SUMS" "$download/SHA256SUMS" ||
-    ! fetch "$base/$asset" "$download/$asset"; then
-    echo "Could not download this release. It must exist in the public MayoEDU/FOS repository. The installed app was left alone." >&2
+echo "Downloading FOS $tag release checksums."
+if ! fetch "$base/SHA256SUMS" "$download/SHA256SUMS"; then
+    echo "Could not download this release's checksums. Check the connection and published release tag, then run the same command again. The installed app was left alone." >&2
+    exit 1
+fi
+echo "Downloading the Steam Frame archive (this may take a few minutes)."
+if ! fetch "$base/$asset" "$download/$asset"; then
+    echo "Could not download this release's archive. Check the connection, free space and published release tag, then run the same command again. The installed app was left alone." >&2
     exit 1
 fi
 # Read only the exact archive's checksum entry; release metadata cannot make sha256sum inspect arbitrary paths.
@@ -84,6 +94,7 @@ if ! (cd "$download" && sha256sum --check --strict expected.sha256); then
 fi
 
 # Validate the complete archive before extracting or running any release script.
+echo "Checking archive contents and ARM64 compatibility."
 if ! python3 - "$download/$asset" "$download/files" <<'PY'
 import os
 from pathlib import Path, PurePosixPath
@@ -182,4 +193,10 @@ then
 fi
 
 echo "Verified FOS $tag. Installing the sender, dashboard panel and bundled camera tool."
-bash "$download/files/frameeyeosc/install.sh" --with-panel
+if bash "$download/files/frameeyeosc/install.sh" --with-panel; then
+    echo "FOS $tag installation finished."
+else
+    result="$?"
+    echo "FOS installation failed. Review the installer error above, correct its cause and run the same command again." >&2
+    exit "$result"
+fi

@@ -1,4 +1,4 @@
-# FOS / frameeyeosc for Steam Frame
+# FOS by MayoEDU — Steam Frame eye tracking
 
 FOS is a standalone Steam Frame project based on [sasaken1102r/frameeyeosc](https://github.com/sasaken1102r/frameeyeosc), with drop-in compatibility for its internal eye cameras. Once a stable headset release is published, use [MayoEDU/FOS releases](https://github.com/MayoEDU/FOS/releases) and `./install.sh --with-panel` to replace the existing sender and dashboard while preserving settings. The FOS panel updates from **MayoEDU/FOS**. See [installation, updates, uninstall and upstream integration](docs/FORK.md).
 
@@ -12,11 +12,11 @@ Sends the Steam Frame's eye tracking (gaze and eye openness) to VRChat over OSC,
 
 https://github.com/user-attachments/assets/f8969485-161b-40d4-b9e4-689dee6d1955
 
-This is a fork of [konsti219/frameeyeosc](https://github.com/konsti219/frameeyeosc). The Frame's public APIs only give you a combined gaze direction. konsti219 found that the eye tracker also measures how open each eye is and keeps it in an internal shared-memory object (`/dev/shm/eye-server.mmap`), and that is where this tool reads it from.
+The eye-tracker integration originates in [konsti219/frameeyeosc](https://github.com/konsti219/frameeyeosc). The Frame's public APIs only give you a combined gaze direction. konsti219 found that the eye tracker also measures how open each eye is and keeps it in an internal shared-memory object (`/dev/shm/eye-server.mmap`), and that is where this tool reads it from.
 
 The way the eye-camera tool finds the eye camera frames is ported from Curtis English's [FrameEyeCameraFeed](https://github.com/Curtis-VL/FrameEyeCameraFeed) (MIT); thank you.
 
-## What this fork adds
+## Features
 
 - It finds your PC on its own by sending to whichever PC Steam Link is streaming from. With the bundled wireless adapter that's the adapter's direct link, so your home network doesn't matter.
 - Gaze and eyelids are smoothed with One Euro filters. A small deadzone keeps the eyes still while you fixate, and the gaze is held while your eyes are shut, because the Frame's gaze jumps as the eyes reopen.
@@ -58,9 +58,15 @@ The video shows the avatar's eyes in VRChat with the eye cameras in use. See [Ey
 
 ### Install FOS on the Frame
 
-Download the Steam Frame archive and `SHA256SUMS` from [MayoEDU/FOS releases](https://github.com/MayoEDU/FOS/releases). Enable Developer Mode to open Konsole, verify with `sha256sum -c SHA256SUMS`, unpack the archive, and run `./install.sh --with-panel` as the normal headset user. The panel must be replaced as well to switch updates to FOS. See [the fork guide](docs/FORK.md) for backups, release requirements and upstream integration.
+Enable Developer Mode to open Konsole and run this as the normal headset user:
 
-The upstream installer at `frame.sasaken1102s.net` installs the original fork. Selecting its eye app replaces FOS; use FOS releases or the FOS panel for this project.
+```sh
+bash -o pipefail -c 'curl -fsSL https://github.com/MayoEDU/FOS/raw/main/get.sh | bash'
+```
+
+This installs the current **v0.8.1-rc.1** Steam Frame test release over an existing copy, including the panel, while keeping settings and calibration. Downloads and the complete ARM64 payload are verified before installation. The recording's normal, advanced and pupil-range calibration checks pass; live headset testing remains outstanding. See [the FOS guide](docs/FORK.md) for prerequisites, manual downloads, updates, scoped removal and upstream integration.
+
+The upstream installer at `frame.sasaken1102s.net` installs the upstream build. Selecting its eye app replaces FOS; use FOS releases or the FOS panel for this project.
 
 ### Install from a PC
 
@@ -487,4 +493,4 @@ MIT. See [LICENSE](LICENSE); the original work is by konsti219. `vendor/frame-up
 
 ## Thanks
 
-Thanks to konsti219 for frameeyeosc and for finding where the Frame keeps its eyelid data. This fork is built on that work. Thanks also to Curtis English, whose FrameEyeCameraFeed showed how to find the eye cameras' frames; eyecam builds on it.
+Thanks to konsti219 for frameeyeosc and for finding where the Frame keeps its eyelid data. FOS builds on that work. Thanks also to Curtis English, whose FrameEyeCameraFeed showed how to find the eye cameras' frames; eyecam builds on it.

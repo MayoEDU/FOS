@@ -898,7 +898,7 @@ UiText makeJapanese() {
     t.stepInstall = "入れ替え中";
     t.reasonNetwork = "GitHub につながりません";
     t.reasonRateLimited = "GitHub の回数制限にかかりました。1 時間ほどあとで試してね";
-    t.reasonNotFound = "公開されている版がありません";
+    t.reasonNotFound = "安定版はまだ公開されていません";
     t.reasonBadResponse = "GitHub の返事を読めませんでした";
     t.reasonBadVersion = "版の番号を読めませんでした";
     t.reasonBadUrl = "GitHub 以外の場所へ向かったので止めました";
@@ -1813,7 +1813,7 @@ UiText makeEnglish() {
     t.stepInstall = "Installing";
     t.reasonNetwork = "Can't reach GitHub";
     t.reasonRateLimited = "GitHub's rate limit was hit. Try again in an hour";
-    t.reasonNotFound = "No published release";
+    t.reasonNotFound = "No stable release yet";
     t.reasonBadResponse = "Couldn't read GitHub's answer";
     t.reasonBadVersion = "Couldn't read the version number";
     t.reasonBadUrl = "Stopped: the download led outside GitHub";

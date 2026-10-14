@@ -9,7 +9,7 @@
 namespace fos {
 
 inline constexpr const char* kRepository = "MayoEDU/FOS";
-inline constexpr const char* kReleasePage = "https://github.com/MayoEDU/FOS/releases/latest";
+inline constexpr const char* kReleasePage = "https://github.com/MayoEDU/FOS/releases";
 
 // The upstream installer's generic menu can reinstall frameeyeosc. Only named companion apps are offered.
 inline bool canInstallCompanion(const std::string& key) {

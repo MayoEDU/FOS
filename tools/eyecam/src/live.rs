@@ -2322,6 +2322,47 @@ mod tests {
         assert_eq!(r.fps(), 15.0);
     }
 
+    /// Replay a complete protocol recording, including squint, look down and bright/dark pupil steps.
+    /// Personal eye images remain external: EYECAM_SESSION points to the user's original recording directory.
+    #[test]
+    #[ignore = "requires EYECAM_SESSION with a complete calibration protocol recording"]
+    fn advanced_calibration_on_a_session() {
+        let session = crate::replay::Session::open(
+            std::path::Path::new(&std::env::var("EYECAM_SESSION").unwrap()),
+            false,
+        ).unwrap();
+        let mut samples: [Vec<Sample>; 2] = [Vec::new(), Vec::new()];
+        let mut img = vec![0u8; crate::replay::FRAME];
+        for (eye, samples) in samples.iter_mut().enumerate() {
+            let mut engine = EyeEngine::default();
+            let mut order: Vec<usize> = (0..session.frames(eye)).collect();
+            order.sort_by(|&a, &b| session.t_cam[eye][a].total_cmp(&session.t_cam[eye][b]));
+            for k in order {
+                let t = session.t_cam[eye][k];
+                session.read(eye, k, &mut img).unwrap();
+                let (pitch, open) = session.valve.nearest(t)
+                    .map(|j| (session.valve.pitch[eye][j], session.valve.open[eye][j]))
+                    .unwrap_or((f64::NAN, f64::NAN));
+                let out = engine.process_open(&img, pitch, open, t, &Params::default());
+                if let (Some(label), _) = session.label_at(t, STEP_DELAY) {
+                    let sample = Sample::from_out(Label::parse(label), &out, t);
+                    if out.closed {
+                        assert!(!out.pupil_fresh && sample.pd.is_nan(), "closed frame is not a fresh diameter: {out:?}");
+                    }
+                    samples.push(sample);
+                }
+            }
+        }
+        let (wear, measured) = fit_wear(&samples, [DEFAULT_WIDEN_STEP; 2]).unwrap();
+        assert!(measured, "both widen steps must come from measured geometry");
+        eprintln!("wear: {}", wear_report(&samples).0);
+        eprintln!("user: {}", user_report(&samples, &wear).0);
+        let (user, _) = fit_user(&samples, &wear, None, true).unwrap();
+        assert!(user.iter().all(|u| u.f_sq.is_finite() && u.f_sq < 0.85));
+        let pupil = fit_pupil(&samples, Some(wear.map(|w| w.r_px))).unwrap();
+        assert!(pupil.iter().all(|&(lo, hi)| lo.is_finite() && hi.is_finite() && hi > lo));
+    }
+
     fn samples(label: Label, n: usize, skin: f64, ap: f64, pitch: f64, lower: f64, ok: bool) -> Vec<Sample> {
         (0..n)
             .map(|i| Sample {

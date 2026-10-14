@@ -1,8 +1,18 @@
 # Changelog
 
+## 0.8.1 (2026-10-14)
+
+FOS by MayoEDU: the optional squint/look-down calibration now passes the native recording, and Konsole installation and release delivery handle interrupted downloads more clearly. Published as an ARM64 test prerelease pending live Steam Frame checks.
+
+- Follow the measured upper eyelid when searching for a lower lid after the pupil disappears. Retain the original lower limit for wide openings and require a real opposing gradient. Strict advanced calibration, first-cycle wear calibration and fresh pupil-range fitting pass without relaxing their checks; compatibility extraction remains identical to upstream.
+- Show download progress, retry temporary release-download failures, clean temporary files after interruption and preserve installer error status. The documented one-command launcher reports curl failures.
+- Show "No stable release yet" when appropriate and open the FOS release list. Stable in-app updates keep their existing confirmation and update only from MayoEDU/FOS.
+- Verify the exact immutable source tag, draft release, five assets and remote SHA-256 digests before publishing. Stable release publication is explicitly selected after headset validation.
+- Use MayoEDU project and commit identity while retaining upstream attribution and licenses.
+
 ## 0.8.0 (2026-10-14)
 
-FOS development build: fixes reproduced calibration and pupil-sizing failures while retaining Steam Frame's tracking and dashboard. This version has not yet been released or validated on a real headset.
+FOS ARM64 test prerelease: fixes reproduced calibration and pupil-sizing failures while retaining Steam Frame's tracking and dashboard. Published as v0.8.0-rc.1; live headset validation remains outstanding.
 
 - Keep measured closed-eye aperture until later open-eye frames establish an iris radius, rather than failing the first calibration.
 - Refine the pupil edge without mistaking bright eyelid or sclera for the iris; find the iris boundary even when the pupil dilates. The prototype `--compat` path is unchanged.

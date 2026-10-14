@@ -8,33 +8,52 @@ Use an archive and `SHA256SUMS` from [MayoEDU/FOS releases](https://github.com/M
 
 ### One-command test candidate
 
-After the repository is public and **v0.8.0-rc.1** has been published, paste this one command into Konsole on the Steam Frame as the normal headset user:
+After **v0.8.1-rc.1** is published and the updated bootstrap is on `main` in the public repository, paste this one command into Konsole on the Steam Frame as the normal headset user:
 
 ```sh
-curl -fsSL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/MayoEDU/FOS/v0.8.0-rc.1/get.sh | bash
+bash -o pipefail -c 'curl -fsSL --proto =https --proto-redir =https https://raw.githubusercontent.com/MayoEDU/FOS/main/get.sh | bash'
 ```
 
 This command installs the explicitly selected ARM64 test candidate, including the sender, dashboard panel and camera tool. It can replace an existing copy in place and preserves settings and calibration. It downloads from MayoEDU/FOS over verified HTTPS, checks the release checksum, checks the complete archive and ARM64 glibc executables, then runs `install.sh --with-panel`. No GitHub sign-in or sudo is needed for that installation. Camera helper setup remains the existing separate one-time action from the panel.
 
-The candidate is an experimental cross build prepared for headset testing; it has not established reliable tracking on a physical wearer. See [hardware validation](CAMERA_VALIDATION.md) and [native recording verification](NATIVE_RECORDING_VERIFICATION.md). Its release stays marked as a prerelease, so the stable in-app updater will not install it automatically. A later stable release must have a numeric version above **0.8.0** to update a candidate installation through the app.
+Enable Developer Mode to open Konsole, and install/start SteamVR once before installing the panel. Run the command in the normal headset user's session. The installer needs `curl`, Python 3, `sha256sum` and `mktemp`, a writable temporary directory (`TMPDIR`, or `/tmp` by default), and free space for the archive, extracted files and installation backup. It shows download progress, retries temporary release-download failures twice, and removes its temporary download after success or failure. If a download or installation fails, read the error, correct the cause and run the same command again; an uninstall is unnecessary.
 
-`get.sh` currently pins **v0.8.0-rc.1**. To choose another published tag explicitly, pass `--tag`, for example `bash get.sh --tag v0.8.1` after downloading the script. The tag-specific command above remains valid when a newer default is added to `main`.
+For a copy/paste option that downloads the complete bootstrap before executing it:
+
+```sh
+(
+set -e
+fos_script_dir="$(mktemp -d)"
+trap 'rm -rf -- "$fos_script_dir"' EXIT
+curl -fL --retry 2 --connect-timeout 15 --max-time 120 \
+  --proto '=https' --proto-redir '=https' \
+  -o "$fos_script_dir/get.sh" https://raw.githubusercontent.com/MayoEDU/FOS/v0.8.1-rc.1/get.sh
+bash "$fos_script_dir/get.sh"
+)
+```
+
+The candidate is an experimental cross build prepared for headset testing; it has not established reliable tracking on a physical wearer. See [hardware validation](CAMERA_VALIDATION.md) and [native recording verification](NATIVE_RECORDING_VERIFICATION.md). Its release stays marked as a prerelease, so the stable in-app updater will not install it automatically. A later stable release must have a numeric version above **0.8.1** to update a candidate installation through the app.
+
+`get.sh` currently pins **v0.8.1-rc.1**. The short command follows the default selected by `main`; the tag-specific copy/paste option remains fixed to this candidate when the default changes. To choose another published tag explicitly, pass `--tag`, for example `bash get.sh --tag v0.8.2` after downloading the script.
 
 ### Manual candidate installation
 
 After the candidate is published in the public repository, these commands are an alternative to the one-command installer. Enable Developer Mode to open Konsole, then run them as the normal headset user:
 
 ```sh
+(
+set -e
 mkdir -p ~/Downloads/fos
 cd ~/Downloads/fos
 curl -fL --proto '=https' --proto-redir '=https' -O \
-  https://github.com/MayoEDU/FOS/releases/download/v0.8.0-rc.1/frameeyeosc-0.8.0-steamframe-aarch64.tar.gz
+  https://github.com/MayoEDU/FOS/releases/download/v0.8.1-rc.1/frameeyeosc-0.8.1-steamframe-aarch64.tar.gz
 curl -fL --proto '=https' --proto-redir '=https' -O \
-  https://github.com/MayoEDU/FOS/releases/download/v0.8.0-rc.1/SHA256SUMS
+  https://github.com/MayoEDU/FOS/releases/download/v0.8.1-rc.1/SHA256SUMS
 sha256sum -c SHA256SUMS
-tar xzf frameeyeosc-0.8.0-steamframe-aarch64.tar.gz
+tar xzf frameeyeosc-0.8.1-steamframe-aarch64.tar.gz
 cd frameeyeosc
 ./install.sh --with-panel
+)
 ```
 
 The public [source repository](https://github.com/MayoEDU/FOS) and its GitHub source archives are also available without signing in. The installer preserves existing settings and camera calibration; replacing an existing copy does not require uninstalling it first.
@@ -42,17 +61,20 @@ The public [source repository](https://github.com/MayoEDU/FOS) and its GitHub so
 On the headset, keep a backup of existing settings if present, verify the download, and install the panel along with the sender:
 
 ```sh
+(
+set -e
 cp -a ~/.config/frameeyeosc ~/frameeyeosc-config-backup
 cp -a ~/.config/eyecam ~/eyecam-config-backup
 sha256sum -c SHA256SUMS
-tar xzf frameeyeosc-0.8.0-steamframe-aarch64.tar.gz
+tar xzf frameeyeosc-0.8.1-steamframe-aarch64.tar.gz
 cd frameeyeosc
 ./install.sh --with-panel
+)
 ```
 
 If this is a new installation, the backup commands can be skipped. Existing settings, learned calibration, recordings and service/autostart choices are preserved. Fresh installations enable the normal defaults; updates refresh running services and leave stopped services stopped. Disabled autostart and service masks remain in place. The camera helper still requires the existing one-time setup from the Eye cameras tab; the user installer does not run sudo or modify SteamOS. When the bundled helper changes, follow the panel's helper update prompt rather than copying it into SteamVR or disabling camera protections.
 
-Include `--with-panel` when replacing an upstream copy: the update destination belongs to the panel. The FOS panel checks **MayoEDU/FOS** only; it will never install a release from the original fork. Until a stable FOS release exists, the update check can report that no published release was found. Checking for updates does not publish or install anything. Installation still requires the user's normal Update confirmation.
+Include `--with-panel` when replacing an upstream copy: the update destination belongs to the panel. The FOS panel checks **MayoEDU/FOS** only; it will never install a release from the original fork. Until a stable FOS release exists, the update check reports **No stable release yet** and its release link opens the full release list. Checking for updates does not publish or install anything. Installation still requires the user's normal Update confirmation.
 
 The shared updater and its integrity manifest in `vendor/frame-updater/` remain unchanged. FOS supplies its repository through the supported `UpdaterConfig.repo` field in `panel/src/update_config.h`. The vendored updater includes the repository in its cache key, so an old cached upstream release is discarded when the FOS panel checks for updates. Release archives retain `frameeyeosc-<version>-steamframe-aarch64.tar.gz`; both the archive and its `SHA256SUMS` must be attached to a release. Numeric fork versions must increase: the shared updater compares only the numeric version core, so a suffix alone cannot make an update newer.
 
@@ -104,7 +126,7 @@ scripts/package.sh --check
 scripts/package.sh
 ```
 
-Packaging runs the Rust and panel test suites, validates every release binary as ARM64 with the glibc interpreter, and creates `dist/frameeyeosc-0.8.0-steamframe-aarch64.tar.gz` and `dist/SHA256SUMS`. It refuses a PC or a musl environment before building. Host tests cannot establish camera capture, SteamVR shared-memory compatibility, calibration quality or reliable gaze and pupil output on a real wearer. Before releasing, test a fresh camera setup and an in-place update on the headset, check both camera previews, complete calibration, verify gaze, blinks, widening and pupil changes with bright/dim content, and confirm Valve tracking continues when the camera service is stopped.
+Packaging runs the Rust and panel test suites, validates every release binary as ARM64 with the glibc interpreter, and creates `dist/frameeyeosc-0.8.1-steamframe-aarch64.tar.gz` and `dist/SHA256SUMS`. It refuses a PC or a musl environment before building. Host tests cannot establish camera capture, SteamVR shared-memory compatibility, calibration quality or reliable gaze and pupil output on a real wearer. Before releasing, test a fresh camera setup and an in-place update on the headset, check both camera previews, complete calibration, verify gaze, blinks, widening and pupil changes with bright/dim content, and confirm Valve tracking continues when the camera service is stopped. See [release delivery](RELEASE_DELIVERY.md) for the reviewed candidate/stable publication workflow, verified retry and anonymous-download checks.
 
 ## Integrate upstream changes
 

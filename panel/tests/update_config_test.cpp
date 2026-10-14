@@ -70,7 +70,7 @@ int main() {
         auto config = fos::updaterConfig(script, "0.8.0");
         CHECK(config.app == "frameeyeosc");
         CHECK(config.repo == "MayoEDU/FOS");
-        CHECK(std::string(fos::kReleasePage) == "https://github.com/MayoEDU/FOS/releases/latest");
+        CHECK(std::string(fos::kReleasePage) == "https://github.com/MayoEDU/FOS/releases");
         CHECK(fos::canInstallCompanion("perf"));
         CHECK(!fos::canInstallCompanion(""));
         CHECK(!fos::canInstallCompanion("eye"));

@@ -14,8 +14,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "get.sh"
-DEFAULT_TAG = "v0.8.0-rc.1"
-ASSET = "frameeyeosc-0.8.0-steamframe-aarch64.tar.gz"
+DEFAULT_TAG = "v0.8.1-rc.1"
+ASSET = "frameeyeosc-0.8.1-steamframe-aarch64.tar.gz"
 BINARY_NAMES = ("frameeyeosc", "frameeyeosc-panel", "eyecam/eyecam-rec", "eyecam/eyecam-grab")
 
 
@@ -47,16 +47,20 @@ try:
     assert args[args.index("--proto") + 1] == "=https"
     assert args[args.index("--proto-redir") + 1] == "=https"
     assert "--insecure" not in args and "-k" not in args
-    output_flag = "-o" if "-o" in args else "--output"
-    destination = Path(args[args.index(output_flag) + 1])
+    output_flag = "-o" if "-o" in args else "--output" if "--output" in args else None
+    destination = Path(args[args.index(output_flag) + 1]) if output_flag else None
     routes = json.loads(Path(os.environ["FOS_BOOTSTRAP_ROUTES"]).read_text())
     route = routes[urls[0]]
 except (AssertionError, KeyError, ValueError) as error:
     print(f"unexpected bootstrap fixture request: {error}", file=sys.stderr)
     sys.exit(97)
-if route.get("exit", 0) == 0:
-    shutil.copyfile(route["file"], destination)
-else:
+if route.get("exit", 0) == 0 or route.get("partial", False):
+    if destination:
+        shutil.copyfile(route["file"], destination)
+    else:
+        sys.stdout.buffer.write(Path(route["file"]).read_bytes())
+        sys.stdout.buffer.flush()
+if route.get("exit", 0) != 0:
     print("fixture download failed", file=sys.stderr)
 if "-w" in args or "--write-out" in args:
     sys.stdout.write(f"{route.get('status', 200)} {route.get('effective_url', urls[0])}")
@@ -71,13 +75,16 @@ import json
 import os
 from pathlib import Path
 import sys
+failure = int(os.environ.get("FOS_BOOTSTRAP_INSTALLER_EXIT", "0"))
+if failure:
+    sys.exit(failure)
 root = Path(os.environ["FOS_BOOTSTRAP_EFFECTS"])
 sentinel = root / "installed-version"
 (root / "installer-run.json").write_text(json.dumps({
     "args": sys.argv[1:], "previous_version": sentinel.read_text(), "cwd": Path.cwd().name,
     "camera_payload": Path("eyecam/eyecam-rec").is_file(),
 }))
-sentinel.write_text("0.8.0-rc.1\\n")
+sentinel.write_text("0.8.1-rc.1\\n")
 PY
 """
 
@@ -182,6 +189,7 @@ class BootstrapTests(unittest.TestCase):
         self.assertNotIn("unexpectedly-invoked-service-operation", result.stderr)
         self.assertNotIn("unexpected bootstrap fixture request", result.stderr)
         self.assertEqual(self.settings.read_text(), "existing calibration and camera settings\n")
+        self.assertEqual(list(self.temporary.iterdir()), [], "bootstrap left temporary payloads behind")
         return result
 
     def requests(self):
@@ -216,7 +224,7 @@ class BootstrapTests(unittest.TestCase):
         self.assert_secure_requests()
 
     def test_explicit_tag_requests_only_fos_release_assets(self):
-        tag = "v0.8.0-rc.2"
+        tag = "v0.8.1-rc.2"
         self.route_tag(tag)
         result = self.run_bootstrap("--tag", tag)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -239,6 +247,48 @@ class BootstrapTests(unittest.TestCase):
         self.write_routes()
         result = self.run_bootstrap()
         self.assert_no_install(result)
+
+    def test_interrupted_archive_download_can_be_retried(self):
+        archive_url = next(url for url in self.routes if url.endswith(ASSET))
+        self.routes[archive_url].update({"exit": 18, "partial": True})
+        self.write_routes()
+        result = self.run_bootstrap()
+        self.assert_no_install(result)
+        self.assertIn("run the same command again", result.stderr)
+        self.routes[archive_url].update({"exit": 0})
+        self.write_routes()
+        result = self.run_bootstrap()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(self.record.read_text())["previous_version"], "existing working install\n")
+
+    def test_unavailable_temporary_directory_fails_before_network(self):
+        self.environment["TMPDIR"] = str(self.scratch / "missing-directory")
+        result = self.run_bootstrap()
+        self.assert_no_install(result)
+        self.assertEqual(self.requests(), [])
+        self.assertIn("Check TMPDIR", result.stderr)
+
+    def test_installer_failure_preserves_status_and_reports_retry(self):
+        self.environment["FOS_BOOTSTRAP_INSTALLER_EXIT"] = "41"
+        result = self.run_bootstrap()
+        self.assert_no_install(result)
+        self.assertEqual(result.returncode, 41)
+        self.assertIn("installer error above", result.stderr)
+
+    def test_documented_launcher_reports_failed_script_download(self):
+        # A syntactically complete early prefix must not make a failed curl look successful.
+        prefix = self.scratch / "partial-get.sh"
+        prefix.write_bytes(BOOTSTRAP.read_bytes().split(b"version=", 1)[0])
+        raw_url = "https://raw.githubusercontent.com/MayoEDU/FOS/main/get.sh"
+        self.routes[raw_url] = {"file": str(prefix), "exit": 18, "partial": True}
+        self.write_routes()
+        guide = (ROOT / "docs/FORK.md").read_text()
+        command = guide.split("```sh\n", 1)[1].split("```", 1)[0]
+        result = subprocess.run(["bash", "-c", command], env=self.environment,
+                                cwd=self.scratch, capture_output=True, text=True, timeout=15)
+        self.assert_no_install(result)
+        self.assertEqual(result.returncode, 18)
+        self.assertEqual(list(self.temporary.iterdir()), [])
 
     def test_missing_camera_payload_never_runs_installer(self):
         for file in ("eyecam/eyecam-rec", "eyecam/eyecam-grab", "eyecam/install_grab.sh",

@@ -52,16 +52,16 @@ calibration, updates the shared camera output and calibration history, and clear
 ## Full recording and pupil response
 
 All 15,194 images are represented in the final replay. Full-recording wear calibration succeeds for both eyes
-without fallback; measured aperture gaps are 1.161 left / 1.344 right. The following counts use the recorder's
+without fallback; measured aperture gaps are 1.173 left / 1.344 right. The following counts use the recorder's
 trimmed cue samples rather than every transition frame:
 
 | Measurement | Left | Right |
 | --- | ---: | ---: |
 | Normal pupil samples | 1,400/1,512 | 1,389/1,512 |
 | Wide pupil samples | 1,113/1,134 | 1,104/1,134 |
-| Closed-cue frames reporting closed | 309/324 | 324/324 |
+| Closed-cue frames reporting closed | 324/324 | 324/324 |
 | Closed-cue pupil / fresh-size samples | 0 / 0 | 0 / 0 |
-| Bright-cue fresh pupil samples | 725 | 1,046 |
+| Bright-cue fresh pupil samples | 725 | 1,047 |
 | Dark-cue fresh pupil samples | 387 | 410 |
 | Bright median estimated diameter, mm | 2.85 | 3.06 |
 | Dark median estimated diameter, mm | 4.72 | 4.92 |
@@ -71,10 +71,25 @@ The pupil-range fit succeeds for both eyes using fresh samples only. Its diamete
 the pupil diameter changes. These values demonstrate the recording's dilation response without treating blink-held
 sizes as new measurements.
 
-The optional advanced squint/look-down user fit still rejects this recording: measured squint fractions are
-1.96 left / 1.64 right, above its unchanged 0.85 maximum, and the squint segment has no usable pupils. This is a
-remaining limitation of that advanced fit; the successful initial setup and separate pupil-range fit do not depend
-on it. The changes do not bypass this failure or replace the user's existing advanced calibration with bad values.
+The optional advanced squint/look-down fit also succeeds with its original strict checks. Previously, after the
+pupil disappeared during squinting, the lower-lid search stayed around the old pupil centre and selected an
+unrelated skin edge. It now follows the measured upper edge while retaining the original lower search limit
+for a wide opening. Both lid edges still need real opposing image gradients; a missing pupil alone cannot make
+the eye closed. The tracked-pupil and compatibility paths are unchanged.
+
+| Advanced measurement | Left | Right |
+| --- | ---: | ---: |
+| Squint aperture, pixels | 14.30 | 9.03 |
+| Squint fraction | -0.028 | 0.032 |
+| Look-down aperture, pixels | 38.67 | 49.70 |
+| Look-down / normal aperture | 0.529 | 0.656 |
+| Normal lower-lid position, pixels | 181.42 | 199.81 |
+| Look-down lower-lid position, pixels | 191.36 | 203.27 |
+
+The small negative left squint fraction means its measured squint is slightly narrower than the closed reference;
+the existing calibration accepts that measurement. All 378 trimmed look-down samples per eye remain open.
+Negative controls verify an open eye without a detectable pupil stays open and an upper edge alone supplies no
+aperture. No calibration gates were lowered.
 
 ## Reproduce the check
 
@@ -86,6 +101,8 @@ tools/eyecam/target/release/eyecam-rec --replay <recording-folder> --calib wear 
 tools/eyecam/target/release/eyecam-rec --replay <recording-folder> --out /tmp/fos-frames.csv
 EYECAM_SESSION=<recording-folder> cargo test --release --locked \
   --manifest-path tools/eyecam/Cargo.toml worker_on_a_session -- --ignored --nocapture
+EYECAM_SESSION=<recording-folder> cargo test --release --locked \
+  --manifest-path tools/eyecam/Cargo.toml advanced_calibration_on_a_session -- --ignored --nocapture
 ```
 
 The worker test uses the first four cue steps, passes images through the actual asynchronous live worker, and

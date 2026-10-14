@@ -1,6 +1,6 @@
 # ARM64 test candidate
 
-The v0.8.0-rc.1 candidate is intended for Steam Frame testing. It contains actual Linux ARM64 executables;
+The v0.8.1-rc.1 candidate is intended for Steam Frame testing. It contains actual Linux ARM64 executables;
 it is cross-compiled against glibc, with no musl, replacement system libraries or bundled SteamVR library.
 The existing installer replaces FrameEyeOSC, its dashboard and bundled camera tools while keeping settings.
 See [FORK.md](FORK.md) for the single-command installation, in-app updates and narrowly scoped uninstall.
@@ -30,9 +30,9 @@ closed samples contain no pupil candidates and report closed.
 
 Cross-compilation and QEMU cannot exercise the running headset's eye server, camera permissions, VR dashboard,
 live OSC receiver or actual service update. The candidate is published as a prerelease for those checks. Its
-initial setup and pupil-range fit pass native recording replay; the optional advanced squint fit remains a known
-limitation on that recording, as described in [NATIVE_RECORDING_VERIFICATION.md](NATIVE_RECORDING_VERIFICATION.md).
+initial setup, pupil-range fit and optional advanced squint/look-down fit pass native recording replay, as described
+in [NATIVE_RECORDING_VERIFICATION.md](NATIVE_RECORDING_VERIFICATION.md).
 
 The normal `scripts/package.sh` continues to require a native Steam Frame build. Do not present this candidate
 as having passed live headset tests. GitHub's normal latest-release updater skips prereleases. A later stable
-release must increase the numeric version, for example to 0.8.1, so it updates this 0.8.0 candidate in place.
+release must increase the numeric version, for example to 0.8.2, so it updates this 0.8.1 candidate in place.

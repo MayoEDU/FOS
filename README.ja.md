@@ -1,6 +1,12 @@
-# FOS / frameeyeosc for Steam Frame
+# FOS by MayoEDU — Steam Frame eye tracking
 
-このリポジトリは Steam Frame 向けの FOS フォークです。[MayoEDU/FOS のリリース](https://github.com/MayoEDU/FOS/releases)からインストールし、元の版から切り替えるときは `./install.sh --with-panel` でパネルも置き換えてください。更新先は **MayoEDU/FOS** です。元の `frame.sasaken1102s.net` インストーラーで eye を選ぶと元の版に戻ります。FOS のビルド、インストール、上流との統合は [docs/FORK.md](docs/FORK.md) を参照してください。
+FOS は MayoEDU の Steam Frame 向けプロジェクトです。[MayoEDU/FOS のリリース](https://github.com/MayoEDU/FOS/releases)からインストールし、元の版から切り替えるときは `./install.sh --with-panel` でパネルも置き換えてください。更新先は **MayoEDU/FOS** です。元の `frame.sasaken1102s.net` インストーラーで eye を選ぶと元の版に戻ります。FOS のビルド、インストール、上流との統合は [docs/FORK.md](docs/FORK.md) を参照してください。
+
+Konsole で通常ユーザーとして次の一行を実行すると、**v0.8.1-rc.1** テスト版に設定を保持して切り替えられます。記録での初回・詳細・瞳孔範囲の合わせは成功していますが、実機での検証はまだです。
+
+```sh
+bash -o pipefail -c 'curl -fsSL https://github.com/MayoEDU/FOS/raw/main/get.sh | bash'
+```
 
 Steam Frame のアイトラッキング（視線とまぶたの開き具合）を、VRCFaceTracking 形式のアバターパラメータとして OSC で VRChat に送るツールです。ヘッドセット上でバックグラウンドのサービスとして動き、Steam Link でストリーミングしている PC 版 VRChat で使えます。PC の VRCFaceTracking に送って、ほかのトラッカーとまとめることもできます。
 
@@ -8,11 +14,11 @@ Steam Frame のアイトラッキング（視線とまぶたの開き具合）�
 
 https://github.com/user-attachments/assets/f8969485-161b-40d4-b9e4-689dee6d1955
 
-[konsti219/frameeyeosc](https://github.com/konsti219/frameeyeosc) をフォークしたものです。Steam Frame のまぶたのデータは公開 API からは取れないのですが、元のプロジェクトが内部の共有メモリ（`/dev/shm/eye-server.mmap`）から読めることを見つけてくれたおかげで、このツールを作ることができました。
+アイトラッキングの基盤は [konsti219/frameeyeosc](https://github.com/konsti219/frameeyeosc) の成果に基づいています。Steam Frame のまぶたのデータは公開 API からは取れないのですが、元のプロジェクトが内部の共有メモリ（`/dev/shm/eye-server.mmap`）から読めることを見つけてくれたおかげで、このツールを作ることができました。
 
 目のカメラの映像の取り出し方は、Curtis English さんの [FrameEyeCameraFeed](https://github.com/Curtis-VL/FrameEyeCameraFeed)（MIT）から移植しました。
 
-## このフォークで足したもの
+## 主な機能
 
 - 送り先の PC は自動で見つけます。Steam Link でつないでいる PC に送るので、アドレスを調べて設定する必要はありません。付属の無線アダプタを使っているときはその直通回線で送るので、家のネットワークの状態にも左右されません
 - 視線とまぶたを One Euro フィルタでなめらかにしています。何かを見つめているときの細かい揺れは小さなデッドゾーンで止め、目を閉じている間は視線を固定します。Frame は目を開けた瞬間に視線が跳ねるためです
@@ -483,4 +489,4 @@ MIT。[LICENSE](LICENSE) を参照してください。元の作品は konsti219
 
 ## 謝辞
 
-まぶたのデータのありかを見つけて frameeyeosc を公開してくれた konsti219 さんに感謝します。このフォークはその成果の上に作っています。目のカメラの映像の見つけ方を FrameEyeCameraFeed で示してくれた Curtis English さんにも感謝します。eyecam はその上に作っています。
+まぶたのデータのありかを見つけて frameeyeosc を公開してくれた konsti219 さんに感謝します。FOS はその成果に基づいています。目のカメラの映像の見つけ方を FrameEyeCameraFeed で示してくれた Curtis English さんにも感謝します。eyecam はその上に作っています。
