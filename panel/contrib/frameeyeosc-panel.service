@@ -1,0 +1,19 @@
+[Unit]
+Description=frameeyeosc panel (SteamVR dashboard settings for frameeyeosc)
+# An OpenVR overlay, so it only runs while SteamVR does
+After=steamvr.service
+PartOf=steamvr.service
+
+[Service]
+ExecStart=%h/.local/bin/frameeyeosc-panel
+# Also come back when only SteamVR restarts (steamvr.service keeps running). When steamvr.service stops,
+# PartOf stops this unit too, so it is not restarted then
+Restart=always
+RestartSec=5
+# "Quit" in the panel, "close" on the dashboard icon, and "another instance is already running" exit with 3:
+# don't restart, and don't count it as a failure
+RestartPreventExitStatus=3
+SuccessExitStatus=3
+
+[Install]
+WantedBy=steamvr.service

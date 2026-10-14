@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=frameeyeosc panel
+Name[ja]=frameeyeosc パネル（目の送信の設定）
+Comment=Change frameeyeosc's eye tracking settings from the SteamVR dashboard. Launch again while running to open the panel.
+Comment[ja]=SteamVR のダッシュボードから frameeyeosc の設定を変える。常駐中にもう一度起動するとパネルを開く
+# The installer replaces Exec with the binary's absolute path (Steam may start it without ~/.local/bin in PATH)
+Exec=@BINARY@
+Icon=frameeyeosc-panel
+Terminal=false
+Categories=Utility;

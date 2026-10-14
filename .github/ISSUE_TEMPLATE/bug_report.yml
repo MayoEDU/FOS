@@ -1,0 +1,56 @@
+name: Bug report / 不具合の報告
+description: Something doesn't work as expected. / 思ったとおりに動かないとき
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! English or Japanese is fine. / 報告ありがとう！英語でも日本語でも大丈夫です。
+        Logs may contain IP addresses on your home network. Feel free to replace them with `x.x.x.x`.
+        ログには家のネットワークの IP アドレスが入ることがあります。気になるときは `x.x.x.x` などに書き換えてください。
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / 何が起きたか
+      description: What you did, what you expected, and what happened instead (a screenshot helps). / 何をしたら、どうなるはずが、どうなったか（スクリーンショットがあると助かります）
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版
+      description: Shown on the panel's Advanced tab, or run `~/.local/bin/frameeyeosc-panel --version` on the Frame. / パネルの「詳細」タブ、または Frame で `~/.local/bin/frameeyeosc-panel --version`
+      placeholder: "0.7.8"
+    validations:
+      required: true
+  - type: dropdown
+    id: output
+    attributes:
+      label: Output / 送り先
+      options:
+        - VRChat directly / VRChat に直接
+        - VRCFaceTracking (ETVR)
+        - Not sure / わからない
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How the Frame connects to the PC / Frame と PC のつなぎ方
+      options:
+        - Steam Link with the included wireless adapter / 付属の無線アダプターで Steam Link
+        - Steam Link over home Wi-Fi / 家の Wi-Fi で Steam Link
+        - Other / その他
+        - Not sure / わからない
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / ログ
+      description: |
+        Run this on the Frame (Desktop Mode terminal or ssh) soon after the problem, and paste the output.
+        問題が起きたあとすぐに Frame で（デスクトップモードの端末か ssh で）次を実行して、出てきた内容を貼ってください。
+        `journalctl --user -u frameeyeosc -u frameeyeosc-panel --since "1 hour ago" --no-pager`
+      render: shell
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else / そのほか
+      description: Your settings if you changed any (`~/.config/frameeyeosc/config.json`), glasses, etc. / 変えた設定（`~/.config/frameeyeosc/config.json`）、眼鏡の有無など

@@ -1,0 +1,16 @@
+[Unit]
+Description=Send Steam Frame eye tracking to VRChat over OSC
+# The eye server and its shared memory only exist while SteamVR runs.
+After=steamvr.service
+PartOf=steamvr.service
+
+[Service]
+# Per-user settings (OSC target, eyelid calibration). Example: contrib/frameeyeosc.env.example
+EnvironmentFile=%h/.config/frameeyeosc/env
+ExecStart=%h/.local/bin/frameeyeosc $FRAMEEYEOSC_ARGS
+# The shared memory may not exist yet right after SteamVR starts; retry until it does.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=steamvr.service
