@@ -12,6 +12,7 @@
 #include "setup_tools.h"
 #include "text_layout.h"
 #include "theme.h"
+#include "update_config.h"
 
 #include <cairo.h>
 
@@ -1028,7 +1029,7 @@ PanelHit EyePanel::pointerDown(double x, double y, double now) {
             openAppsConfirm(appsKeys_[hit.arg]);
             return {};
         case PanelAction::AppsMenu:
-            openAppsConfirm("");
+            // FOS offers each companion directly; the upstream menu can replace this fork.
             return {};
         case PanelAction::AppsScroll:
             scroll(hit.arg * appsViewH_ / 3);
@@ -1275,6 +1276,7 @@ void EyePanel::setPreviewOptions(eye_preview::Source source, bool mirror, bool c
 }
 
 void EyePanel::openAppsConfirm(const std::string& key) {
+    if (!fos::canInstallCompanion(key)) return;
     if (!appsListOpen()) openAppsList();
     appsConfirmOpen_ = true;
     appsConfirmKey_ = key;
@@ -1298,7 +1300,9 @@ const frame_apps::Entry* EyePanel::appsConfirmEntry(const PanelModel& model) con
 std::string EyePanel::appsConfirmCommand(const PanelModel& model) const {
     // The same function as the one that makes Konsole's script, from the list now (not the built-in one)
     const frame_apps::Entry* entry = appsConfirmEntry(model);
-    return frame_apps::installerCommand(entry != nullptr ? entry->app.key : std::string());
+    return entry != nullptr && fos::canInstallCompanion(entry->app.key)
+               ? frame_apps::installerCommand(entry->app.key)
+               : std::string();
 }
 
 void EyePanel::setHistoryRow(const std::string& version) {
@@ -3913,18 +3917,11 @@ void EyePanel::drawAppsList(const Pen& pen, const UiText& t, const PanelModel& m
     pen.text(kInnerX, kAppsHeadY + 26, t.appsAllTitle, fitSize(pen, t.appsAllTitle, 22, 16, headW, true), kText, true);
     pen.text(kInnerX, kAppsHeadY + 50, ellipsize(pen, t.appsListSub, 14, false, headW, false), 14, kTextMuted);
 
-    // At the bottom: where the list comes from (two lines at most) and "Open the installer" (busy while its Konsole
-    // is open)
+    // At the bottom: where the list comes from. Named companion Install buttons remain available above.
     {
-        const bool busy = m.apps.menuBusy;
-        const std::string label = busy ? t.appsChipBusy : t.appsOpenInstaller;
-        const double menuW = pen.measure(label, 16, true) + 48;
-        const double menuX = kInnerRight - menuW;
-        drawButton(pen, menuX, kAppsFootY, menuW, kAppsFootH, label, {PanelAction::AppsMenu, nullptr, 0}, !busy, false,
-                   16);
         // (a "\n" in the text ends a line there, a size smaller if a part would otherwise wrap; two lines in all)
         const std::string text = t.appsListNote;
-        const double noteW = menuX - 18 - kInnerX;
+        const double noteW = kInnerRight - kInnerX;
         std::vector<std::string> parts;
         for (size_t start = 0; start <= text.size();) {
             const size_t end = std::min(text.find('\n', start), text.size());
@@ -3985,7 +3982,7 @@ void EyePanel::drawAppsConfirm(const Pen& pen, const UiText& t, const PanelModel
     using frame_apps::LaunchResult;
     // The app and the command from the list now (it may be one only the site has); Konsole gets the same command
     const frame_apps::Entry* entry = appsConfirmEntry(m);
-    const bool unknown = !appsConfirmKey_.empty() && entry == nullptr;  // gone from the list: can't be opened
+    const bool unknown = entry == nullptr || !fos::canInstallCompanion(appsConfirmKey_);
     std::string title = t.appsConfirmMenuTitle;
     if (entry != nullptr) {
         char text[256];
@@ -5832,23 +5829,37 @@ double EyePanel::setupCard(const Pen& pen, const UiText& t, const PanelModel& m,
             // Whenever the video is there and eyecam-rec is ready (the pupils not found only warn: see under it)
             const double by = y + 14;
             const double bh = 46;
-            const double bw = std::max(186.0, pen.measure(t.setupWaitButton, 18, true) + 76);
-            const bool usable = s.locked && (s.state == State::Idle || s.state == State::Error) && !busy;
+            const SettingsView settings(m);
+            const bool camerasOn = settings.flag(key::kCameraLids);
+            const bool camerasLocked = settings.locked(key::kCameraLids);
+            const char* button = camerasOn ? t.setupWaitButton : t.setupEnableCameras;
+            const double bw = std::max(186.0, pen.measure(button, 18, true) + 76);
+            const bool ready = s.state == State::Idle || s.state == State::Error;
+            const bool usable = !busy && (camerasOn ? s.live && s.locked && ready : !camerasLocked);
+            const PanelHit action = camerasOn
+                                        ? PanelHit {PanelAction::EyecamCalib, nullptr, static_cast<int>(eyecam::Calib::Wear)}
+                                        : PanelHit {PanelAction::SetBool, key::kCameraLids, 1};
             if (draw) {
-                drawIconButton(pen, x0, by, bw, bh, t.setupWaitButton,
-                               {PanelAction::EyecamCalib, nullptr, static_cast<int>(eyecam::Calib::Wear)}, usable,
-                               true, 18, ButtonIcon::Play);
+                drawIconButton(pen, x0, by, bw, bh, button, action, usable, true, 18, ButtonIcon::Play);
                 const double hx = x0 + bw + 18;
-                pen.text(hx, by + 19, t.setupWaitHint1, fitSize(pen, t.setupWaitHint1, 15, 11, x1 - hx, false),
-                         kTextMuted);
-                pen.text(hx, by + 41, t.setupWaitHint2, fitSize(pen, t.setupWaitHint2, 15, 11, x1 - hx, false),
-                         kTextMuted);
+                if (camerasOn && s.live) {
+                    pen.text(hx, by + 19, t.setupWaitHint1, fitSize(pen, t.setupWaitHint1, 15, 11, x1 - hx, false),
+                             kTextMuted);
+                    pen.text(hx, by + 41, t.setupWaitHint2, fitSize(pen, t.setupWaitHint2, 15, 11, x1 - hx, false),
+                             kTextMuted);
+                } else if (camerasOn) {
+                    drawDiagChip(pen, t, x1, by + (bh - 30) / 2, 30, 14);
+                }
             }
             y = by + bh;
             // An eye's pupil not found: put the headset on again first. The video not found: why, as eyecam-rec says.
             // Otherwise when it can be pressed
             const std::string why = eyecam::searchText(t, s);
-            if (s.locked && eyecam::pupilTrouble(s)) {
+            if (!camerasOn) {
+                para(camerasLocked ? t.setupCamerasLocked : t.setupCamerasOff, 15, kAccent, true, 30, 21, 3);
+            } else if (!s.live) {
+                para(t.setupCamerasStarting, 15, kTextMuted, false, 30, 21, 2);
+            } else if (s.locked && eyecam::pupilTrouble(s)) {
                 para(t.setupWaitNoPupil, 15, kDanger, true, 32, 21, 2);
             } else if (!why.empty()) {
                 // (with "Diagnostics" at the right, for someone who stays stuck there)
@@ -6808,10 +6819,12 @@ void EyePanel::drawPreview(const Pen& pen, const UiText& t, const PanelModel& m)
     const eye_preview::View& pv = previewFrozen_ ? previewKept_ : m.preview;
     const CameraState camera = eye_preview::cameraState(m.eyecam, SettingsView(m).flag(key::kCameraLids), pv.refused);
     const bool cameraValues = eye_preview::cameraValuesAvailable(camera);
+    const CameraState pictureState =
+        eye_preview::cameraPicturesState(m.eyecam, SettingsView(m).flag(key::kCameraLids), pv.refused);
     // ("Camera" while the camera's values can't be had shows the values as sent)
     const Source source = previewSource_ == Source::Camera && !cameraValues ? Source::Sent : previewSource_;
     // The eye cameras can't give pictures: their switch goes off, to be pressed again once they can (as the loop does)
-    if (camera != CameraState::Available) previewCamera_ = false;
+    if (pictureState != CameraState::Available) previewCamera_ = false;
     const bool pictures = previewCamera_;
     // A sheet over the content card (the tabs and the left column stay), like the other Frame apps' list
     drawCard(pen, kRightX, kContentY, kRight - kRightX, kContentH, 20, kCard, kBorder, 2);
@@ -6849,7 +6862,7 @@ void EyePanel::drawPreview(const Pen& pen, const UiText& t, const PanelModel& m)
     drawToggle(pen, x, rowY, mirrorW, rowH, t.previewMirror, {PanelAction::PreviewMirror, nullptr, 0}, previewMirror_,
                true);
     x += mirrorW + gap;
-    const bool cameraUsable = camera == CameraState::Available;
+    const bool cameraUsable = pictureState == CameraState::Available;
     drawToggle(pen, x, rowY, cameraW, rowH, t.previewPicture, {PanelAction::PreviewCamera, nullptr, 0}, previewCamera_,
                cameraUsable);
     x += cameraW + gap;
@@ -6858,7 +6871,7 @@ void EyePanel::drawPreview(const Pen& pen, const UiText& t, const PanelModel& m)
                    previewFrozen_ ? ButtonIcon::Play : ButtonIcon::Pause);
     // Why the pictures (and the camera's values) can't show, under the switches
     const char* why = nullptr;
-    switch (camera) {
+    switch (pictureState) {
         case CameraState::Available: break;
         case CameraState::NotRunning: why = t.previewCamNotRunning; break;
         case CameraState::NotSetUp: why = t.previewCamNotSetUp; break;

@@ -669,6 +669,10 @@ UiText makeJapanese() {
     t.setupWaitEyeNoPupil = "映像はあるけど瞳が見つからない";
     t.setupWaitEyeWeak = "瞳がときどきしか見えない";
     t.setupWaitButton = "覚えはじめる";
+    t.setupEnableCameras = "目のカメラを使う";
+    t.setupCamerasOff = "目のカメラの処理はオフです。上のボタンでオンにすると、目のプレビューと校正を使えます";
+    t.setupCamerasLocked = "起動オプションで目のカメラがオフになっています。サービスや起動設定の --no-camera-lids を外して、frameeyeosc を起動し直してね";
+    t.setupCamerasStarting = "目のカメラの処理が始まるのを待っています。始まらないときは「診断」を見てね";
     t.setupWaitHint1 = "押すと 18 秒の校正が始まるよ";
     t.setupWaitHint2 = "画面の指示どおりに目を動かしてね";
     t.setupWaitFoot = "目の映像が届いたら押せるよ。届かないときは HMD をかぶって、SteamVR の視線トラッキングがオンか見てね";
@@ -1580,6 +1584,10 @@ UiText makeEnglish() {
     t.setupWaitEyeNoPupil = "video, but no pupil found";
     t.setupWaitEyeWeak = "pupil found only sometimes";
     t.setupWaitButton = "Start learning";
+    t.setupEnableCameras = "Enable eye cameras";
+    t.setupCamerasOff = "Eye camera processing is off. Enable it above to preview your eyes and calibrate";
+    t.setupCamerasLocked = "Eye cameras are disabled by a launch option. Remove --no-camera-lids from the service or launch options, then restart frameeyeosc";
+    t.setupCamerasStarting = "Waiting for eye camera processing to start. Check Diagnostics if it does not start";
     t.setupWaitHint1 = "Starts an 18 s calibration";
     t.setupWaitHint2 = "Move your eyes as the screen says";
     t.setupWaitFoot = "It can be pressed once the eyes' video arrives. If it doesn't, put the headset on and check SteamVR's eye tracking is on";

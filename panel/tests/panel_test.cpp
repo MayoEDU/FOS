@@ -305,6 +305,7 @@ PanelModel eyecamIn(const char* state, bool setUp = true) {
     e.state = eyecam::parseState(state);
     e.setupDone = setUp;
     e.locked = true;  // the headset on, both eyes seen (the setup's (3) waits for that, with nothing else to press)
+    e.live = true;
     return m;
 }
 
@@ -366,6 +367,15 @@ void testPupilSetup(const FontSet& fonts) {
     if (calib.size() == 1) CHECK(calib[0].hit.arg == static_cast<int>(eyecam::Calib::Wear));
     // ...not without the video
     m.eyecam.status.locked = false;
+    panel.render(m);
+    CHECK(hits(panel, PanelAction::EyecamCalib).empty());
+    // Held buffers and a previous lock cannot start a calibration while frame processing is off.
+    m.eyecam.status.locked = true;
+    m.eyecam.status.live = false;
+    panel.render(m);
+    CHECK(hits(panel, PanelAction::EyecamCalib).empty());
+    m.eyecam.status.live = true;
+    m.config.root.set(key::kCameraLids, JsonValue::makeBool(false));
     panel.render(m);
     CHECK(hits(panel, PanelAction::EyecamCalib).empty());
 }
@@ -450,6 +460,50 @@ void pressTab(EyePanel& panel, PanelTab tab) {
         panel.pointerDown(area.x + area.w / 2, area.y + area.h / 2, 0.0);
         panel.pointerUp();
         return;
+    }
+}
+
+void testSetupCameraRecovery(const FontSet& fonts) {
+    for (const Language language : {Language::Ja, Language::En}) {
+        EyePanel panel(fonts);
+        panel.setTab(PanelTab::Eyecam);
+        PanelModel m = eyecamIn("idle", false);
+        m.language = language;
+        m.config.root.set(key::kCameraLids, JsonValue::makeBool(false));
+        m.eyecam.status.live = false;
+        panel.render(m);
+        // A preserved "Don't use" setting can be enabled on the initial setup itself, before the Basic tab has
+        // its usual camera switch. The disabled calibration cannot run with empty camera samples.
+        const std::vector<EyePanel::HitArea> enable = hits(panel, PanelAction::SetBool, key::kCameraLids);
+        CHECK(enable.size() == 1 && hits(panel, PanelAction::EyecamCalib).empty());
+        if (enable.size() == 1) {
+            CHECK(enable[0].hit.arg == 1);
+            CHECK(enable[0].x >= 416 && enable[0].x + enable[0].w <= 1154);
+            CHECK(enable[0].y >= 110 && enable[0].y + enable[0].h <= 676 && enable[0].h >= 44);
+        }
+        const PanelHit action = press(panel, PanelAction::SetBool);
+        CHECK(action.action == PanelAction::SetBool && action.key != nullptr &&
+              std::string(action.key) == key::kCameraLids && action.arg == 1);
+        m.config.root.set(key::kCameraLids, JsonValue::makeBool(true));
+        panel.render(m);
+        // Settings have changed but the daemon has not resumed yet: wait with a route to Diagnostics. Once
+        // processing and the camera video resume, the normal calibration button becomes available.
+        CHECK(hits(panel, PanelAction::SetBool, key::kCameraLids).empty());
+        CHECK(hits(panel, PanelAction::EyecamCalib).empty() && hits(panel, PanelAction::DiagOpen).size() == 1);
+        m.eyecam.status.live = true;
+        panel.render(m);
+        CHECK(hits(panel, PanelAction::EyecamCalib).size() == 1);
+        CHECK(hits(panel, PanelAction::SetBool, key::kCameraLids).empty());
+
+        // A launch option takes precedence over the saved setting: the UI explains how to change that launch
+        // option and does not offer a settings button that cannot override it.
+        PanelModel locked = m;
+        locked.status.locked.push_back(key::kCameraLids);
+        locked.status.effective.set(key::kCameraLids, JsonValue::makeBool(false));
+        locked.eyecam.status.live = false;
+        panel.render(locked);
+        CHECK(hits(panel, PanelAction::SetBool, key::kCameraLids).empty());
+        CHECK(hits(panel, PanelAction::EyecamCalib).empty());
     }
 }
 
@@ -2076,7 +2130,7 @@ void testApps(const FontSet& fonts) {
         CHECK(panel.appsListOpen() && !panel.appsConfirmOpen() && panel.appsShown() && !panel.advPageShown());
         CHECK(panel.tab() == PanelTab::Advanced && panel.advPage() == AdvPage::Version);
         panel.render(m);
-        CHECK(hits(panel, PanelAction::AppsClose).size() == 1 && hits(panel, PanelAction::AppsMenu).size() == 1);
+        CHECK(hits(panel, PanelAction::AppsClose).size() == 1 && hits(panel, PanelAction::AppsMenu).empty());
         CHECK(subTabs(panel).empty() && hits(panel, PanelAction::UpdateCheck).empty());
         // "Install" only on the two that aren't installed (keyboard, perf); a chip on the running and installed ones
         std::vector<int> installs;
@@ -2131,15 +2185,15 @@ void testApps(const FontSet& fonts) {
         CHECK(press(panel, PanelAction::AppsCancel).action == PanelAction::None);
         CHECK(panel.appsListOpen() && !panel.appsConfirmOpen());
 
-        // "Open the installer": the menu's command; not while the menu's Konsole is still open
+        // FOS never opens the upstream generic menu or eye installer, which can replace the fork.
         panel.render(m);
-        CHECK(press(panel, PanelAction::AppsMenu).action == PanelAction::None);
-        CHECK(panel.appsConfirmOpen() && panel.appsConfirmKey().empty());
-        panel.render(m);
-        CHECK(panel.appsConfirmEntry(m) == nullptr);
-        CHECK(panel.appsConfirmCommand(m) == frame_apps::installerCommand(""));
-        CHECK(panel.appsConfirmCommand(m) == "curl -fsSL https://frame.sasaken1102s.net | sh");
-        CHECK(press(panel, PanelAction::AppsLaunch).action == PanelAction::AppsLaunch);
+        CHECK(hits(panel, PanelAction::AppsMenu).empty());
+        panel.openAppsConfirm("");
+        CHECK(!panel.appsConfirmOpen());
+        panel.openAppsConfirm("eye");
+        CHECK(!panel.appsConfirmOpen());
+        panel.openAppsConfirm("frameeyeosc");
+        CHECK(!panel.appsConfirmOpen());
         {
             PanelModel menuBusy = m;
             menuBusy.apps.menuBusy = true;
@@ -2164,7 +2218,7 @@ void testApps(const FontSet& fonts) {
             CHECK(panel.appsConfirmEntry(site) != nullptr && panel.appsConfirmEntry(site)->app.name == "frame-example");
             CHECK(panel.appsConfirmCommand(site) == "curl -fsSL https://frame.sasaken1102s.net | sh -s -- install example");
             panel.render(m);
-            CHECK(panel.appsConfirmEntry(m) == nullptr && panel.appsConfirmCommand(m) == frame_apps::installerCommand(""));
+            CHECK(panel.appsConfirmEntry(m) == nullptr && panel.appsConfirmCommand(m).empty());
             CHECK(hits(panel, PanelAction::AppsLaunch).empty());
             CHECK(press(panel, PanelAction::AppsCancel).action == PanelAction::None);
         }
@@ -2335,12 +2389,26 @@ void testPreview(const FontSet& fonts) {
         panel.render(moved);
         CHECK(panel.toRgba() != frozen);
 
+        // Before the first calibration: raw pictures are usable for fitting the headset, but interpreted camera
+        // values stay disabled. Finishing calibration does not turn the picture switch on by itself.
+        PanelModel uncalibrated = m;
+        uncalibrated.eyecam.status.setupDone = false;
+        panel.render(uncalibrated);
+        CHECK(hits(panel, PanelAction::PreviewCamera).size() == 1 && panel.previewPictures());
+        for (const EyePanel::HitArea& area : hits(panel, PanelAction::PreviewSource)) {
+            CHECK(area.hit.arg != static_cast<int>(eye_preview::Source::Camera));
+        }
+        press(panel, PanelAction::PreviewCamera);
+        CHECK(!panel.previewPictures());
+        panel.render(m);
+        CHECK(!panel.previewPictures());
+        press(panel, PanelAction::PreviewCamera);
+
         // Without the eye cameras in use: no pictures' switch and no "Camera" values to press, the rest as before
         CHECK(panel.previewPictures());
-        for (const int why : {0, 1, 2, 3}) {
+        for (const int why : {0, 2, 3}) {
             PanelModel without = m;
             if (why == 0) without.eyecam.visible = false;
-            if (why == 1) without.eyecam.status.setupDone = false;
             if (why == 2) without.config.root.set(key::kCameraLids, JsonValue::makeBool(false));
             if (why == 3) without.eyecam.status.hasPreview = false;
             panel.render(without);
@@ -2436,6 +2504,7 @@ int main() {
     testWayOut(fonts);
     testCalibNeedsLids(fonts);
     testPupilSetup(fonts);
+    testSetupCameraRecovery(fonts);
     testSearchSetup(fonts);
     testDiagPage(fonts);
     testSubTabs(fonts);

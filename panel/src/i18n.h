@@ -678,6 +678,10 @@ struct UiText {
     const char* setupWaitEyeNoPupil;  ///< ...the video there, the pupil not found (eyecam::EyeSight::NoPupil)
     const char* setupWaitEyeWeak;  ///< ...the pupil found only some of the time (eyecam::EyeSight::Weak)
     const char* setupWaitButton;  ///< ...the button ("calib wear")
+    const char* setupEnableCameras;  ///< ...instead, when camera processing is disabled in settings
+    const char* setupCamerasOff;  ///< ...how to resume processing before the first calibration
+    const char* setupCamerasLocked;  ///< ...camera processing disabled by a launch option; restart needed
+    const char* setupCamerasStarting;  ///< ...settings enabled, awaiting processing and camera frames
     const char* setupWaitHint1;  ///< ...beside it
     const char* setupWaitHint2;
     const char* setupWaitFoot;  ///< ...under it (also under a failed one's buttons while the video isn't there)

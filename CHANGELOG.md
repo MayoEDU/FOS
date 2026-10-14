@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 (2026-10-14)
+
+FOS development build: fixes reproduced calibration and pupil-sizing failures while retaining Steam Frame's tracking and dashboard. This version has not yet been released or validated on a real headset.
+
+- Keep measured closed-eye aperture until later open-eye frames establish an iris radius, rather than failing the first calibration.
+- Refine the pupil edge without mistaking bright eyelid or sclera for the iris; find the iris boundary even when the pupil dilates. The prototype `--compat` path is unchanged.
+- Adapt live contrast thresholds and closed-lash brightness guards to dim camera exposure. Remove the obsolete pupil mask after the pupil disappears and measure opposing closed-lid gradients through its old position. The native recording's initial calibration now passes both eyes without fallback; bright/dark pupil-range fitting also succeeds.
+- Exclude blink-held and rejected binocular pupil sizes from pupil-range calibration, including repeated conflicting measurements.
+- Allow opt-in raw camera pictures before calibration and provide a recovery control when camera processing is off.
+- Update from MayoEDU/FOS only, preserving settings, calibration and service choices. Validate the full payload before replacement and roll back ordinary copy/service failures. Retain the app's uninstall command, which removes only its owned files and bundled tools; personal recordings remain. Keep upstream history for reviewed merges.
+- Add host compatibility tests and synthetic recording replay. Real camera capture, wearer calibration and native release installation still require headset validation; see `docs/CAMERA_VALIDATION.md`.
+
 ## 0.7.8 (2026-10-14)
 
 Tracking keeps reaching the PC after the Frame changes networks with a fixed destination, for example from home Wi-Fi to the Steam Link adapter (#30). The gaze scale now goes from 5 to 200 %, and the debug gaze dots can also show where your eyes look before the scale, as a ring (#27). After the Frame starts, the automatic re-center waits until you close the dashboard SteamVR opens, instead of starting and being stopped by it.

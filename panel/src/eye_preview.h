@@ -236,7 +236,7 @@ bool pictureFresh(const Picture& picture, uint64_t nowNs);
 /** @return CLOCK_MONOTONIC now (ns), the clock the pictures are stamped with */
 uint64_t monotonicNs();
 
-/** Whether the camera pictures can show, and why not. */
+/** Availability of a camera preview source, and why it is unavailable. */
 enum class CameraState {
     Available,   ///< eyecam-rec runs, is set up and in use, and makes pictures
     NotRunning,  ///< eyecam-rec isn't running (no eye cameras tab)
@@ -247,13 +247,19 @@ enum class CameraState {
 };
 
 /**
- * Whether the camera pictures can show.
+ * Whether calibrated camera values are in use, including preview capability and refusal diagnostics.
  * @param view eyecam-rec as read
  * @param cameraLids the camera_lids setting
  * @param refused eyecam-rec refused "preview on" (since the sheet opened)
  * @return the state
  */
 CameraState cameraState(const eyecam::View& view, bool cameraLids, bool refused);
+
+/**
+ * Whether raw camera pictures can show. A completed calibration is not needed: the pictures help fit the headset
+ * before the first calibration. The camera processing setting and explicit picture switch still apply.
+ */
+CameraState cameraPicturesState(const eyecam::View& view, bool cameraLids, bool refused);
 
 /**
  * Whether the camera's own values can be shown ("カメラの値"): the eye cameras are in use.

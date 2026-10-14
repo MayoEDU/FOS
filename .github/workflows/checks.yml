@@ -1,0 +1,45 @@
+name: FOS compatibility checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install host panel prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config libcairo2-dev libfreetype-dev libvulkan-dev fonts-noto-cjk
+      - name: Fetch the host OpenVR library for panel compilation
+        run: |
+          git init "$RUNNER_TEMP/openvr"
+          git -C "$RUNNER_TEMP/openvr" fetch --depth 1 https://github.com/ValveSoftware/openvr.git 0924064316de3effbcd1acf1e309182a2deb1c05
+          git -C "$RUNNER_TEMP/openvr" checkout --detach FETCH_HEAD
+      - name: Verify shared vendor files
+        run: |
+          sh vendor/frame-updater/verify.sh
+          sh vendor/frame-apps/verify.sh
+      - name: Test and build sender
+        run: |
+          cargo test --release --locked -- --test-threads=1
+          cargo build --release --locked
+      - name: Test and build camera processing
+        run: |
+          cargo test --release --locked --manifest-path tools/eyecam/Cargo.toml
+          cargo build --release --locked --manifest-path tools/eyecam/Cargo.toml
+      - name: Test replay, installation, and release guards
+        run: python3 -m unittest discover -s tests -p '*_test.py' -v
+      - name: Build and test panel
+        run: |
+          cmake -S panel -B panel/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPENVR_LIB_DIR="$RUNNER_TEMP/openvr/lib/linux64"
+          cmake --build panel/build --parallel 2
+          ctest --test-dir panel/build --output-on-failure
+      # Host binaries exercise tests only. Headset releases require native Steam Frame glibc and ARM64 OpenVR.
