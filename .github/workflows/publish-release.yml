@@ -1,15 +1,27 @@
-name: Publish verified FOS test release
+name: Publish verified FOS release
 
 on:
   workflow_dispatch:
     inputs:
-      asset_branch:
-        description: Branch containing the verified candidate files and metadata
+      assets_commit:
+        description: Full 40-character commit containing reviewed release files and metadata
         required: true
-        default: release-assets/v0.8.0-rc.1
+        type: string
+      release_tag:
+        description: Exact reviewed release tag matching the metadata and existing draft
+        required: true
+        type: string
+      channel:
+        description: Stable requires completed Steam Frame hardware and update validation
+        required: true
+        type: choice
+        default: prerelease
+        options:
+          - prerelease
+          - stable
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: fos-release-publishing
@@ -18,18 +30,33 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      ASSETS_COMMIT: ${{ inputs.assets_commit }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_CHANNEL: ${{ inputs.channel }}
     steps:
+      - name: Require an immutable staging commit
+        run: |
+          python3 - <<'PY'
+          import os, re
+          if not re.fullmatch(r"[0-9a-f]{40}", os.environ["ASSETS_COMMIT"]):
+              raise SystemExit("assets_commit must be a full lowercase Git commit SHA, not a branch or tag")
+          PY
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.asset_branch }}
+          ref: ${{ inputs.assets_commit }}
           path: release-assets
           persist-credentials: false
-      - name: Verify candidate files before publishing
-        run: python3 scripts/publish-release.py release-assets --verify-only
-      - name: Upload and publish the verified prerelease
+      - name: Verify release files, tag and channel before publishing
+        run: python3 scripts/publish-release.py release-assets --verify-only --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL"
+      - name: Upload and publish the verified draft
         env:
           FOS_PUBLISH_TOKEN: ${{ github.token }}
-        run: python3 scripts/publish-release.py release-assets
+        run: python3 scripts/publish-release.py release-assets --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL"
