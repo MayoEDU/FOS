@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Download the explicitly selected FOS Steam Frame release, verify it, and install/replace in place.
-# This bootstrap currently selects the 0.8.1-rc.1 test candidate. The in-app updater selects stable releases only.
+# This bootstrap currently selects the 0.8.1-rc.2 test candidate. The in-app updater selects stable releases only.
 # No GitHub account or sudo is needed once the repository and release are publicly downloadable.
 set -euo pipefail
 
-tag=v0.8.1-rc.1
+tag=v0.8.1-rc.2
 usage() {
     echo "Usage: bash get.sh [--tag vMAJOR.MINOR.PATCH[-candidate]]"
 }
@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
-    echo "Choose an explicit FOS release tag such as v0.8.1-rc.1." >&2
+    echo "Choose an explicit FOS release tag such as v0.8.1-rc.2." >&2
     exit 2
 fi
 if [[ "$(uname -s)" != Linux || "$(uname -m)" != aarch64 ]]; then

@@ -2,7 +2,7 @@
 
 FOS は MayoEDU の Steam Frame 向けプロジェクトです。[MayoEDU/FOS のリリース](https://github.com/MayoEDU/FOS/releases)からインストールし、元の版から切り替えるときは `./install.sh --with-panel` でパネルも置き換えてください。更新先は **MayoEDU/FOS** です。元の `frame.sasaken1102s.net` インストーラーで eye を選ぶと元の版に戻ります。FOS のビルド、インストール、上流との統合は [docs/FORK.md](docs/FORK.md) を参照してください。
 
-Konsole で通常ユーザーとして次の一行を実行すると、**v0.8.1-rc.1** テスト版に設定を保持して切り替えられます。記録での初回・詳細・瞳孔範囲の合わせは成功していますが、実機での検証はまだです。
+Konsole で通常ユーザーとして次の一行を実行すると、**v0.8.1-rc.2** テスト版に自動で置き換えられます。設定・合わせと互換性のあるカメラ用ヘルパーは保持します。事前のアンインストールは不要です。記録での初回・詳細・瞳孔範囲の合わせは成功していますが、実機での検証はまだです。
 
 ```sh
 bash -o pipefail -c 'curl -fsSL https://github.com/MayoEDU/FOS/raw/main/get.sh | bash'

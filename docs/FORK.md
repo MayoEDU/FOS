@@ -8,13 +8,15 @@ Use an archive and `SHA256SUMS` from [MayoEDU/FOS releases](https://github.com/M
 
 ### One-command test candidate
 
-After **v0.8.1-rc.1** is published and the updated bootstrap is on `main` in the public repository, paste this one command into Konsole on the Steam Frame as the normal headset user:
+After **v0.8.1-rc.2** is published and the updated bootstrap is on `main` in the public repository, paste this one command into Konsole on the Steam Frame as the normal headset user:
 
 ```sh
 bash -o pipefail -c 'curl -fsSL --proto =https --proto-redir =https https://raw.githubusercontent.com/MayoEDU/FOS/main/get.sh | bash'
 ```
 
 This command installs the explicitly selected ARM64 test candidate, including the sender, dashboard panel and camera tool. It can replace an existing copy in place and preserves settings and calibration. It downloads from MayoEDU/FOS over verified HTTPS, checks the release checksum, checks the complete archive and ARM64 glibc executables, then runs `install.sh --with-panel`. No GitHub sign-in or sudo is needed for that installation. Camera helper setup remains the existing separate one-time action from the panel.
+
+Replacing the original or sasaken version is automatic: the installer overwrites its sender, panel, updater and camera tools at their existing paths. It cancels an already-running FrameEyeOSC update before replacing files, so that previous update cannot subsequently restore the old version. Normal in-app updates keep their own update process running. A compatible camera helper already set up on the headset is reused, preserving its permissions and camera access. You only need the install command; a separate uninstall is unnecessary.
 
 Enable Developer Mode to open Konsole, and install/start SteamVR once before installing the panel. Run the command in the normal headset user's session. The installer needs `curl`, Python 3, `sha256sum` and `mktemp`, a writable temporary directory (`TMPDIR`, or `/tmp` by default), and free space for the archive, extracted files and installation backup. It shows download progress, retries temporary release-download failures twice, and removes its temporary download after success or failure. If a download or installation fails, read the error, correct the cause and run the same command again; an uninstall is unnecessary.
 
@@ -27,14 +29,14 @@ fos_script_dir="$(mktemp -d)"
 trap 'rm -rf -- "$fos_script_dir"' EXIT
 curl -fL --retry 2 --connect-timeout 15 --max-time 120 \
   --proto '=https' --proto-redir '=https' \
-  -o "$fos_script_dir/get.sh" https://raw.githubusercontent.com/MayoEDU/FOS/v0.8.1-rc.1/get.sh
+  -o "$fos_script_dir/get.sh" https://raw.githubusercontent.com/MayoEDU/FOS/v0.8.1-rc.2/get.sh
 bash "$fos_script_dir/get.sh"
 )
 ```
 
 The candidate is an experimental cross build prepared for headset testing; it has not established reliable tracking on a physical wearer. See [hardware validation](CAMERA_VALIDATION.md) and [native recording verification](NATIVE_RECORDING_VERIFICATION.md). Its release stays marked as a prerelease, so the stable in-app updater will not install it automatically. A later stable release must have a numeric version above **0.8.1** to update a candidate installation through the app.
 
-`get.sh` currently pins **v0.8.1-rc.1**. The short command follows the default selected by `main`; the tag-specific copy/paste option remains fixed to this candidate when the default changes. To choose another published tag explicitly, pass `--tag`, for example `bash get.sh --tag v0.8.2` after downloading the script.
+`get.sh` currently pins **v0.8.1-rc.2**. The short command follows the default selected by `main`; the tag-specific copy/paste option remains fixed to this candidate when the default changes. To choose another published tag explicitly, pass `--tag`, for example `bash get.sh --tag v0.8.2` after downloading the script.
 
 ### Manual candidate installation
 
@@ -46,9 +48,9 @@ set -e
 mkdir -p ~/Downloads/fos
 cd ~/Downloads/fos
 curl -fL --proto '=https' --proto-redir '=https' -O \
-  https://github.com/MayoEDU/FOS/releases/download/v0.8.1-rc.1/frameeyeosc-0.8.1-steamframe-aarch64.tar.gz
+  https://github.com/MayoEDU/FOS/releases/download/v0.8.1-rc.2/frameeyeosc-0.8.1-steamframe-aarch64.tar.gz
 curl -fL --proto '=https' --proto-redir '=https' -O \
-  https://github.com/MayoEDU/FOS/releases/download/v0.8.1-rc.1/SHA256SUMS
+  https://github.com/MayoEDU/FOS/releases/download/v0.8.1-rc.2/SHA256SUMS
 sha256sum -c SHA256SUMS
 tar xzf frameeyeosc-0.8.1-steamframe-aarch64.tar.gz
 cd frameeyeosc
@@ -89,6 +91,8 @@ Network errors, missing checksums, checksum mismatches and unsafe archives stop 
 Only numeric version increases are installable from the app. GitHub's latest-release API skips drafts and prereleases, so an experimental candidate does not replace a stable installation through automatic checks.
 
 ## Remove only FrameEyeOSC and its bundled tools
+
+These commands are for a future complete uninstall. Installing FOS over the original version already handles replacement automatically.
 
 The installed uninstaller remains available even after the downloaded archive and extraction folder are deleted. If the privileged camera helper was set up, remove that exact helper first with its own script:
 

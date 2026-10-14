@@ -64,7 +64,7 @@ Enable Developer Mode to open Konsole and run this as the normal headset user:
 bash -o pipefail -c 'curl -fsSL https://github.com/MayoEDU/FOS/raw/main/get.sh | bash'
 ```
 
-This installs the current **v0.8.1-rc.1** Steam Frame test release over an existing copy, including the panel, while keeping settings and calibration. Downloads and the complete ARM64 payload are verified before installation. The recording's normal, advanced and pupil-range calibration checks pass; live headset testing remains outstanding. See [the FOS guide](docs/FORK.md) for prerequisites, manual downloads, updates, scoped removal and upstream integration.
+This installs the current **v0.8.1-rc.2** Steam Frame test release and automatically replaces the existing FrameEyeOSC sender, panel, updater and camera tools, while keeping settings and calibration. A compatible camera helper is reused, so an existing camera setup remains in place. Only this install command is needed. Downloads and the complete ARM64 payload are verified before replacement. The recording's normal, advanced and pupil-range calibration checks pass; live headset testing remains outstanding. See [the FOS guide](docs/FORK.md) for prerequisites, manual downloads, updates, scoped removal and upstream integration.
 
 The upstream installer at `frame.sasaken1102s.net` installs the upstream build. Selecting its eye app replaces FOS; use FOS releases or the FOS panel for this project.
 

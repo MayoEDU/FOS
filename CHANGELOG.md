@@ -6,6 +6,7 @@ FOS by MayoEDU: the optional squint/look-down calibration now passes the native 
 
 - Follow the measured upper eyelid when searching for a lower lid after the pupil disappears. Retain the original lower limit for wide openings and require a real opposing gradient. Strict advanced calibration, first-cycle wear calibration and fresh pupil-range fitting pass without relaxing their checks; compatibility extraction remains identical to upstream.
 - Show download progress, retry temporary release-download failures, clean temporary files after interruption and preserve installer error status. The documented one-command launcher reports curl failures.
+- In v0.8.1-rc.2, manual installation cancels a running previous FrameEyeOSC update before replacing the app, preventing it from restoring upstream afterwards. In-app updates keep their own installer running. Replacement is automatic; settings, calibration, service choices and a compatible camera helper remain.
 - Show "No stable release yet" when appropriate and open the FOS release list. Stable in-app updates keep their existing confirmation and update only from MayoEDU/FOS.
 - Verify the exact immutable source tag, draft release, five assets and remote SHA-256 digests before publishing. Stable release publication is explicitly selected after headset validation.
 - Use MayoEDU project and commit identity while retaining upstream attribution and licenses.

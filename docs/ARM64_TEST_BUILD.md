@@ -1,6 +1,6 @@
 # ARM64 test candidate
 
-The v0.8.1-rc.1 candidate is intended for Steam Frame testing. It contains actual Linux ARM64 executables;
+The v0.8.1-rc.2 candidate is intended for Steam Frame testing. It contains actual Linux ARM64 executables;
 it is cross-compiled against glibc, with no musl, replacement system libraries or bundled SteamVR library.
 The existing installer replaces FrameEyeOSC, its dashboard and bundled camera tools while keeping settings.
 See [FORK.md](FORK.md) for the single-command installation, in-app updates and narrowly scoped uninstall.

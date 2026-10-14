@@ -34,6 +34,7 @@ class InstallationLifecycleTests(unittest.TestCase):
         self.old_helper = self.scratch / "old-root-helper/eyecam-grab"
         self.environment = dict(os.environ)
         self.environment.pop("FRAMEEYEOSC_NO_SYSTEMCTL", None)
+        self.environment.pop("FRAME_UPDATE_DETACHED", None)
         # HOME changes only in child processes. The task shell and actual user services are untouched.
         self.environment["HOME"] = str(self.user)
         self.environment["XDG_CONFIG_HOME"] = str(self.user / ".config")
@@ -61,6 +62,13 @@ unit = args[-1] if len(args) > 1 else ""
 if unit and unit not in ("frameeyeosc.service", "frameeyeosc-panel.service", "eyecam.service", "frameeyeosc-update.service"):
     sys.exit("unexpected unrelated service: " + unit)
 state = states.setdefault(unit, {"enabled": "not-found", "active": False})
+if action == "show":
+    if os.environ.get("FOS_TEST_FAIL_UPDATE_QUERY") == "1": sys.exit(42)
+    active = state["active"]
+    print("LoadState=" + state.get("load", "not-found" if state["enabled"] == "not-found" else "loaded"))
+    print("ActiveState=" + (active if isinstance(active, str) else "active" if active else "inactive"))
+    print("Job=" + str(state.get("job", "")))
+    sys.exit(state.get("query_exit", 0))
 if action == "is-enabled":
     print(state["enabled"])
     sys.exit(0 if state["enabled"] == "enabled" else 1)
@@ -71,7 +79,18 @@ if action == "enable": state["enabled"] = "enabled"
 if action == "disable":
     state["enabled"] = "disabled"
     if "--now" in args: state["active"] = False
-if action == "stop": state["active"] = False
+if action == "stop":
+    if unit == "frameeyeosc-update.service":
+        expected_path = os.environ.get("FOS_TEST_BEFORE_UPDATE_STOP")
+        if expected_path:
+            expected = json.loads(Path(expected_path).read_text())
+            root = Path(expected["root"])
+            actual = {str(file.relative_to(root)): file.read_bytes().hex()
+                      for file in root.rglob("*") if file.is_file() and not file.is_symlink()}
+            if actual != expected["files"]: sys.exit("installed files changed before pending update stopped")
+        if os.environ.get("FOS_TEST_FAIL_UPDATE_STOP") == "1": sys.exit(42)
+    state["active"] = False
+    if "job" in state: state["job"] = 0
 if action == "restart": state["active"] = True
 if os.environ.get("FOS_TEST_FAIL_RESTART") == "1" and action == "try-restart": sys.exit(42)
 path.write_text(json.dumps(states))
@@ -153,6 +172,185 @@ path.write_text(json.dumps(states))
             destination = self.user / path
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(content)
+
+    def upstream078_installation(self):
+        # Independently seed the destinations written by upstream 0.7.8's installer. Do not run
+        # today's FOS installer as the "old" install, or rely on an external analysis checkout.
+        legacy = self.release("upstream-0.7.8")
+        paths = {
+            ".local/bin/frameeyeosc": "frameeyeosc",
+            ".local/bin/frameeyeosc-panel": "frameeyeosc-panel",
+            ".config/systemd/user/frameeyeosc.service": "frameeyeosc.service",
+            ".config/systemd/user/frameeyeosc-panel.service": "frameeyeosc-panel.service",
+            ".config/systemd/user/eyecam.service": "eyecam/eyecam.service",
+            ".local/share/applications/frameeyeosc-panel.desktop": "frameeyeosc-panel.desktop",
+            ".local/share/frameeyeosc/frame-update.sh": "frame-update.sh",
+            ".local/share/frameeyeosc/CHANGELOG.md": "CHANGELOG.md",
+            ".local/share/frameeyeosc/CHANGELOG.ja.md": "CHANGELOG.ja.md",
+        }
+        for name in ("eyecam-rec", "eyecam-grab", "install_grab.sh", "NOTICE",
+                     "protocol_free.txt", "protocol_widen.txt", "protocol_widen_nolight.txt"):
+            paths[".local/lib/eyecam/" + name] = "eyecam/" + name
+        for size in (48, 128, 256):
+            paths[f".local/share/icons/hicolor/{size}x{size}/apps/frameeyeosc-panel.png"] = (
+                f"icons/frameeyeosc-panel-{size}.png")
+        for destination, source in paths.items():
+            path = self.user / destination
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if source in ("frameeyeosc", "frameeyeosc-panel", "eyecam/eyecam-rec", "eyecam/eyecam-grab"):
+                path.write_bytes((legacy / source).read_bytes())
+                path.chmod(0o755)
+            else:
+                content = (legacy / source).read_bytes() if (legacy / source).exists() else b""
+                content = content.replace(b"@PREFIX@", str(self.user / ".local/lib/eyecam").encode())
+                content = content.replace(b"@BINARY@", str(self.user / ".local/bin/frameeyeosc-panel").encode())
+                path.write_bytes(b"# upstream 0.7.8\n" + content)
+        self.configure()
+        (self.user / ".config/frameeyeosc/install-args").write_text("--with-panel\n")
+        self.root_helper.mkdir()
+        (self.root_helper / "eyecam-grab").write_bytes(b"compatible EYECAM_GRAB_VERSION=1; helper")
+        states = {
+            "frameeyeosc.service": {"enabled": "enabled", "active": True},
+            "frameeyeosc-panel.service": {"enabled": "disabled", "active": True},
+            "eyecam.service": {"enabled": "disabled", "active": False},
+        }
+        self.states.write_text(json.dumps(states))
+        return paths
+
+    def expect_files_unchanged_until_update_stop(self):
+        expectation = self.scratch / "before-update-stop.json"
+        expectation.write_text(json.dumps({"root": str(self.user),
+                                           "files": {path: data.hex() for path, data in self.own_files().items()}}))
+        self.environment["FOS_TEST_BEFORE_UPDATE_STOP"] = str(expectation)
+
+    def test_upstream078_replaced_in_place_without_uninstall_or_helper_reset(self):
+        paths = self.upstream078_installation()
+        self.assertFalse((self.user / ".local/share/frameeyeosc/eyecam-protocols").exists())
+        before = self.own_files()
+        services_before = json.loads(self.states.read_text())
+        helper_before = (self.root_helper / "eyecam-grab").read_bytes()
+        update = self.release("fos-next")
+        for source in ("CHANGELOG.md", "CHANGELOG.ja.md", "eyecam/protocol_free.txt",
+                       "eyecam/protocol_widen.txt", "eyecam/protocol_widen_nolight.txt"):
+            (update / source).write_text("FOS replacement: " + source + "\n")
+        self.run_script(update / "install.sh", "--with-panel")
+        for destination, source in paths.items():
+            expected = (update / source).read_bytes()
+            expected = expected.replace(b"@PREFIX@", str(self.user / ".local/lib/eyecam").encode())
+            expected = expected.replace(b"@BINARY@", str(self.user / ".local/bin/frameeyeosc-panel").encode())
+            self.assertEqual((self.user / destination).read_bytes(), expected, destination)
+        for path, content in before.items():
+            if path.startswith((".config/frameeyeosc/", ".config/eyecam/", "eyecam/")):
+                self.assertEqual((self.user / path).read_bytes(), content, path)
+        self.assertEqual((self.root_helper / "eyecam-grab").read_bytes(), helper_before)
+        self.assertEqual((self.user / ".local/lib/eyecam/protocol_personal.txt").read_text(), "personal protocol")
+        services_after = json.loads(self.states.read_text())
+        for unit in UNITS:
+            self.assertEqual(services_after[unit], services_before[unit], unit)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertFalse(any(call[0] in ("enable", "disable", "stop") for call in calls))
+        self.assertEqual({call[-1] for call in calls if call[0] == "try-restart"}, set(UNITS))
+
+    def test_manual_replacement_cancels_existing_update_before_changing_files(self):
+        first = self.release("v1")
+        self.run_script(first / "install.sh", "--with-panel")
+        for active, job in (("active", ""), ("activating", 1), ("reloading", 1),
+                            ("deactivating", 1), (False, "42 /org/freedesktop/systemd1/job/42")):
+            with self.subTest(active=active, job=job):
+                states = json.loads(self.states.read_text())
+                states["frameeyeosc-update.service"] = {"enabled": "static", "active": active, "job": job}
+                self.states.write_text(json.dumps(states))
+                self.log.write_text("")
+                self.expect_files_unchanged_until_update_stop()
+                update = self.release("v2-" + str(active))
+                self.run_script(update / "install.sh", "--with-panel")
+                pending = json.loads(self.states.read_text())["frameeyeosc-update.service"]
+                self.assertFalse(pending["active"])
+                self.assertEqual(pending["job"], 0)
+                calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+                self.assertEqual([call for call in calls if call[0] == "stop"],
+                                 [["stop", "frameeyeosc-update.service"]])
+
+    def test_missing_or_idle_update_unit_allows_normal_installation(self):
+        for load, job, query_exit in (("not-found", "", 1), ("not-found", 0, 1),
+                                      ("loaded", "", 0), ("loaded", 0, 0)):
+            with self.subTest(load=load, job=job, query_exit=query_exit):
+                states = json.loads(self.states.read_text())
+                states["frameeyeosc-update.service"] = {
+                    "enabled": "static", "load": load, "active": False,
+                    "job": job, "query_exit": query_exit,
+                }
+                self.states.write_text(json.dumps(states))
+                self.log.write_text("")
+                update = self.release(f"idle-{load}-{job}")
+                self.run_script(update / "install.sh", "--with-panel")
+                calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+                self.assertFalse(any(call[0] == "stop" for call in calls))
+
+    def test_pending_update_control_failure_leaves_existing_files_untouched(self):
+        first = self.release("v1")
+        self.run_script(first / "install.sh", "--with-panel")
+        self.configure()
+        states = json.loads(self.states.read_text())
+        states["frameeyeosc-update.service"] = {"enabled": "static", "active": True}
+        self.states.write_text(json.dumps(states))
+        before = self.own_files()
+        update = self.release("v2")
+        for failure in ("FOS_TEST_FAIL_UPDATE_QUERY", "FOS_TEST_FAIL_UPDATE_STOP"):
+            with self.subTest(failure=failure):
+                self.log.write_text("")
+                self.environment[failure] = "1"
+                result = self.run_script(update / "install.sh", "--with-panel", expected=1)
+                self.environment.pop(failure)
+                self.assertIn("installed app was left alone", result.stderr)
+                self.assertEqual(self.own_files(), before)
+                self.assertEqual(json.loads(self.states.read_text()), states)
+                calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+                self.assertTrue(all(call[0] in ("show", "stop") for call in calls))
+
+    def test_incomplete_payload_does_not_cancel_existing_update(self):
+        first = self.release("v1")
+        self.run_script(first / "install.sh", "--with-panel")
+        states = json.loads(self.states.read_text())
+        states["frameeyeosc-update.service"] = {"enabled": "static", "active": True}
+        self.states.write_text(json.dumps(states))
+        before = self.own_files()
+        self.log.write_text("")
+        update = self.release("v2")
+        (update / "eyecam/NOTICE").unlink()
+        self.run_script(update / "install.sh", "--with-panel", expected=1)
+        self.assertEqual(self.own_files(), before)
+        self.assertEqual(json.loads(self.states.read_text()), states)
+        self.assertEqual(self.log.read_text(), "")
+
+    def test_detached_self_update_never_stops_its_own_unit(self):
+        first = self.release("v1")
+        self.run_script(first / "install.sh", "--with-panel")
+        states = json.loads(self.states.read_text())
+        states["frameeyeosc-update.service"] = {"enabled": "static", "active": True}
+        self.states.write_text(json.dumps(states))
+        self.log.write_text("")
+        self.environment["FRAME_UPDATE_DETACHED"] = "1"
+        update = self.release("v2")
+        self.run_script(update / "install.sh", "--with-panel")
+        self.assertTrue((self.user / ".local/bin/frameeyeosc").read_bytes().endswith(b"v2"))
+        self.assertTrue(json.loads(self.states.read_text())["frameeyeosc-update.service"]["active"])
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertFalse(any(call[-1] == "frameeyeosc-update.service" for call in calls))
+
+    def test_file_only_install_preserves_pending_update(self):
+        first = self.release("v1")
+        self.run_script(first / "install.sh", "--with-panel")
+        states = json.loads(self.states.read_text())
+        states["frameeyeosc-update.service"] = {"enabled": "static", "active": True}
+        self.states.write_text(json.dumps(states))
+        self.log.write_text("")
+        self.environment["FRAMEEYEOSC_NO_SYSTEMCTL"] = "1"
+        update = self.release("v2")
+        self.run_script(update / "install.sh", "--with-panel")
+        self.assertTrue((self.user / ".local/bin/frameeyeosc").read_bytes().endswith(b"v2"))
+        self.assertEqual(json.loads(self.states.read_text()), states)
+        self.assertEqual(self.log.read_text(), "")
 
     def test_update_preserves_config_calibration_and_disabled_service_states(self):
         first = self.release("v1")

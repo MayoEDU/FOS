@@ -188,6 +188,54 @@ if ! compgen -G "$here/eyecam/protocol_*.txt" >/dev/null; then
     echo "Missing eyecam recording protocols. Use a complete release archive." >&2
     exit 1
 fi
+
+# A manual replacement must cancel an update already started by the old panel before it can put the
+# upstream app back. The shared updater sets FRAME_UPDATE_DETACHED=1 in its own unit; never stop that
+# unit from the installer it is running. A synchronous stop waits for the previous update to exit.
+if [[ "${FRAME_UPDATE_DETACHED:-}" != 1 && "${FRAMEEYEOSC_NO_SYSTEMCTL:-}" != 1 ]]; then
+    pending_query_ok=true
+    pending_info="$(systemctl --user show --all --property=LoadState --property=ActiveState --property=Job \
+        frameeyeosc-update.service 2>/dev/null)" || pending_query_ok=false
+    pending_load=""
+    pending_update=""
+    pending_job=""
+    pending_job_present=false
+    while IFS='=' read -r property value; do
+        case "$property" in
+            LoadState) pending_load="$value" ;;
+            ActiveState) pending_update="$value" ;;
+            Job) pending_job="${value%% *}"; pending_job_present=true ;;
+        esac
+    done <<<"$pending_info"
+    if ! $pending_job_present || [[ -z "$pending_load" || ! "$pending_job" =~ ^([0-9]+)?$ ]]; then
+        echo "Could not check the previous FrameEyeOSC update job. The installed app was left alone; resolve the user-service error and retry." >&2
+        exit 1
+    fi
+    # A transient unit that has never existed can report not-found with a nonzero query status.
+    # Accept that verified absence; a failed user-bus query does not provide these properties.
+    if ! $pending_query_ok && [[ "$pending_load" != not-found || "$pending_update" != inactive ||
+            ( -n "$pending_job" && "$pending_job" != 0 ) ]]; then
+        echo "Could not check for a previous FrameEyeOSC update. The installed app was left alone; resolve the user-service error and retry." >&2
+        exit 1
+    fi
+    cancel_update=false
+    case "$pending_update" in
+        active | activating | reloading | deactivating) cancel_update=true ;;
+        # A not-yet-started unit can still have a queued job; cancel that job too.
+        inactive | failed) [[ -z "$pending_job" || "$pending_job" == 0 ]] || cancel_update=true ;;
+        *)
+            echo "Could not check for a previous FrameEyeOSC update. The installed app was left alone; resolve the user-service error and retry." >&2
+            exit 1
+            ;;
+    esac
+    if $cancel_update; then
+        echo "Stopping the previous FrameEyeOSC update before replacing the installed app."
+        if ! systemctl --user stop frameeyeosc-update.service; then
+            echo "Could not stop the previous FrameEyeOSC update. The installed app was left alone; resolve the service error and retry." >&2
+            exit 1
+        fi
+    fi
+fi
 if [[ ! -e /dev/shm/eye-server.mmap ]]; then
     echo "Note: /dev/shm/eye-server.mmap does not exist yet. It appears once SteamVR's eye tracking runs; the service retries until then."
 fi

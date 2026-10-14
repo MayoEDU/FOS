@@ -14,7 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "get.sh"
-DEFAULT_TAG = "v0.8.1-rc.1"
+DEFAULT_TAG = "v0.8.1-rc.2"
 ASSET = "frameeyeosc-0.8.1-steamframe-aarch64.tar.gz"
 BINARY_NAMES = ("frameeyeosc", "frameeyeosc-panel", "eyecam/eyecam-rec", "eyecam/eyecam-grab")
 
